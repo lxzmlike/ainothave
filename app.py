@@ -1,85 +1,85 @@
 """
-智能视频助手 v5.0 - 完整版
+智能视频助手v5.0 -完整版
 """
 
-import streamlit as st
-import os
-import sys
-import json
-import time
-import hashlib
-import sqlite3
-import tempfile
-import subprocess
-import threading
-import random
-import secrets
-from datetime import datetime, timedelta
-import cv2
-import numpy as np
-import pandas as pd
-import plotly.express as px
+进口细流如同标准时间
+进口操作系统(操作系统)
+进口[计]系统复制命令(系统的简写)
+进口json
+进口时间
+进口哈希里布
+进口sqlite3
+进口临时文件
+进口子过程
+进口穿线
+进口随意
+进口秘密
+从日期时间进口日期时间，时间增量
+进口cv2
+进口numpy如同铭牌
+进口熊猫如同螺纹中径
+进口plotly.express如同像素
 
-st.set_page_config(page_title="智能视频助手 v5.0", page_icon="🎬", layout="wide")
+街道设置页面配置(page_title="智能视频助手v5.0 "，page_icon="🎬"，布局=“宽”)
 
-LANG = {
-    "zh": {
-        "title": "智能视频助手 v5.0",
-        "user_center": "👤 用户中心",
-        "login": "登录",
-        "register": "注册",
-        "username": "用户名",
-        "password": "密码",
-        "confirm": "确认密码",
-        "login_btn": "登录",
-        "register_btn": "注册",
-        "logout": "注销",
-        "welcome": "欢迎回来",
-        "points": "⭐ 积分",
-        "quick_functions": "快速功能",
-        "pro_mode": "⭐ 专业模式",
-        "pro_tools": "🔧 专业工具",
-        "cut": "剪切视频",
-        "speed": "视频变速",
-        "apply_filter": "应用滤镜",
-        "add_text": "添加文字水印",
-        "export": "导出设置",
-        "ai_assistant": "🤖 AI助手",
-        "smart_matting": "✨ 智能抠像",
-        "material_library": "📚 素材库",
-        "video_sites": "📺 视频网站",
-        "movie_search": "🔍 影视搜索",
-        "about": "📄 关于",
-        "points_mall": "💰 积分商城",
-        "multi_track": "🎞️ 多轨道时间线",
-        "security": "🛡️ 安全监控",
-        "admin_panel": "👑 管理员面板",
-        "current_function": "当前功能",
-        "upload_first": "请上传视频后使用",
-        "password_mismatch": "两次密码不一致",
-        "user_exists": "用户名已存在",
-        "register_success": "注册成功",
-        "login_success": "登录成功",
-        "user_not_exist": "用户名不存在",
-        "wrong_password": "密码错误",
-        "language": "语言",
-        "download": "下载视频"
+LANG ={
+    " zh ": {
+        "标题": "智能视频助手v5.0 ",
+        "用户中心": "👤 用户中心",
+        "登录": "登录",
+        "注册": "注册",
+        "用户名": "用户名",
+        "密码": "密码",
+        "确认": "确认密码",
+        "登录_btn ": "登录",
+        "注册_btn ": "注册",
+        "注销": "注销",
+        “欢迎”: "欢迎回来",
+        “点数”: "⭐ 积分",
+        "快速功能": "快速功能",
+        "专业模式": "⭐ 专业模式",
+        " pro_tools ": "🔧 专业工具",
+        “切”: "剪切视频",
+        “速度”: "视频变速",
+        "应用过滤器": "应用滤镜",
+        "添加文本": "添加文字水印",
+        "导出": "导出设置",
+        “ai _助手”: "🤖人工智能助手",
+        "智能抠图": "✨ 智能抠像",
+        "材料_库": "📚 素材库",
+        "视频网站": "📺 视频网站",
+        "电影_搜索": "🔍 影视搜索",
+        “关于”: "📄 关于",
+        "积分_商城": "💰 积分商城",
+        “多轨道”: "🎞️ 多轨道时间线",
+        “安全性”: "🛡️ 安全监控",
+        "管理面板": "👑 管理员面板",
+        "当前函数": "当前功能",
+        "上传_优先": "请上传视频后使用",
+        "密码不匹配": "两次密码不一致",
+        "用户存在": "用户名已存在",
+        "注册成功": "注册成功",
+        "登录成功": "登录成功",
+        "用户不存在": "用户名不存在",
+        "错误密码": "密码错误",
+        “语言”: "语言",
+        "下载": "下载视频"
     },
-    "en": {
-        "title": "AI Video Assistant v5.0",
-        "user_center": "👤 User Center",
-        "login": "Login",
-        "register": "Register",
-        "username": "Username",
-        "password": "Password",
-        "confirm": "Confirm Password",
-        "login_btn": "Login",
-        "register_btn": "Register",
-        "logout": "Logout",
-        "welcome": "Welcome back",
-        "points": "⭐ Points",
-        "quick_functions": "Quick Functions",
-        "pro_mode": "⭐ Pro Mode",
+    “恩”: {
+        "标题": “AI视频助手v5.0”,
+        "用户中心": "👤用户中心",
+        "登录": "登录",
+        "注册": "注册",
+        "用户名": "用户名",
+        "密码": "密码",
+        "确认": "确认密码",
+        "登录_btn ": "登录",
+        "注册_btn ": "注册",
+        "注销": "注销",
+        “欢迎”: “欢迎回来”,
+        “点数”: “⭐点”,
+        "快速功能": "快速功能",
+        "专业模式": “⭐专业模式”,
         "pro_tools": "🔧 Pro Tools",
         "cut": "Cut Video",
         "speed": "Video Speed",
@@ -325,140 +325,145 @@ def render_ai_assistant():
 
 def render_smart_matting():
     st.subheader(t("smart_matting"))
-    st.info("智能抠像功能开发中，敬请期待")
+街道信息("智能抠像功能开发中，敬请期待")
 
 def render_material_library():
-    st.subheader(t("material_library"))
-    st.info("素材库开发中，敬请期待")
+街道副标题(t("材料_库"))
+街道信息("素材库开发中，敬请期待")
 
-def render_points_mall():
-    st.subheader(t("points_mall"))
-    points = get_points(st.session_state.username)
-    st.write(f"当前积分：{points}")
-    st.info("积分商城开发中，敬请期待")
+极好的 渲染点数商城():
+街道副标题(t("积分_商城"))
+点数=获取积分(街道会话状态.用户名)
+街道写(f "当前积分:{点}")
+街道信息("积分商城开发中，敬请期待")
 
-def render_multi_track():
-    st.subheader(t("multi_track"))
-    st.info("多轨道时间线开发中，敬请期待")
+极好的 渲染_多重_轨迹():
+街道副标题(t(“多轨道”))
+街道信息("多轨道时间线开发中，敬请期待")
 
-def render_security():
-    st.subheader(t("security"))
-    st.success("✅ 安全监控运行中")
+极好的 渲染_安全性():
+街道副标题(t(“安全性”))
+街道成功("✅ 安全监控运行中")
 
-def render_admin_panel():
-    st.subheader(t("admin_panel"))
-    if st.session_state.get('admin_level', 0) >= 5:
-        st.success("👑 超级管理员权限")
-    else:
-        st.warning("权限不足")
+极好的 渲染_管理_面板():
+街道副标题(t("管理面板"))
+    如果街道会话状态.'管理员级别'街道如果, 0) >= 5:
+成功("👑 超级管理员权限")
+    其他:
+街道警告("权限不足")
 
-def main():
-    if 'language' not in st.session_state:
-        st.session_state.language = 'zh'
+极好的 主要的():
+    如果 “语言” 不 在街道会话状态:
+街道会话状态.语言= zh'
     
-    init_all_dbs()
+    初始化所有数据库()
     
-    render_language_switcher()
-    render_auth()
+    渲染语言切换器()
+    渲染_验证()
     
-    if not st.session_state.get('logged_in', False):
-        return
+    如果 不街道会话状态.得到('已登录', 错误的):
+        返回
     
-    points = get_points(st.session_state.username)
-    with st.sidebar:
-        st.write(f"{t('points')}：{points}")
-        st.markdown("---")
-        st.markdown("### 功能菜单")
+点数=获取积分(街道会话状态.用户名)
+    随着街道补充报道:
+街道写(f "{t('点数')}：{点}")
+街道减价("---")
+街道减价("### 功能菜单")
         
-        core_functions = [t("cut"), t("speed")]
-        advanced_functions = [t("ai_assistant"), t("smart_matting"), t("material_library"), t("video_sites"), t("movie_search"), t("points_mall"), t("multi_track"), t("security"), t("about")]
+核心功能=[t(“切”), t(“速度”)]
+高级功能=[
+            t(“艾_助手"), t("智能抠图"), t("材料_库"),
+            t("视频网站"), t("电影_搜索"), t("积分_商城"),
+            t(“多轨道”), t(“安全性”), t(“关于”)
+        ]
         
-        professional_mode = st.checkbox(t("pro_mode"), value=False)
+专业_模式= st。检验盒(t("专业模式")，值=错误的)
         
-        if professional_mode:
-            function = st.selectbox(t("quick_functions"), core_functions + advanced_functions)
-        else:
+        如果专业_模式:
+所有功能=核心功能+高级功能
+函数= st。选择框(t("快速功能")，所有_函数)
+        其他:
 函数= st。选择框(t("快速功能")，核心功能)
             随着街道膨胀器(t(" pro_tools ")):
-对于高级功能中的高级:为副词在高级_功能:
-如果街道按钮(高级，键=f"adv_{副词} "，use_container_width=True):if ST . button(adv，key=f"adv_{adv} "，use _ container _ width = True):
-stsession _ state。当前功能=高级会话状态
-重新运行()
+                为副词在高级_功能:
+                    如果街道按钮(高级，键=f"adv_{副词}"，use_container_width=真实的):
+街道会话状态.当前功能= adv
+街道再放映()
         
-如果第一会话状态中有' current_function ':如果' current_function '在st.session_state中:
-函数=第一会话状态。当前功能会话状态当前功能
-德尔圣会话_状态。当前_函数del ST . session _ state . current _函数
+如果st.会话状态中有'当前功能':如果 '当前功能' 在 st.会话状态:
+函数=第一会话状态。当前功能会话状态当前功能session _ state . 目前的 _ functionsession_state.当前功能目前的 _ functionsession_state.当前功能
+德尔圣会话_状态。当前_函数德尔街。会议_ state。目前的_函数圣。会议_ state。目前的_函数德尔圣会话状态.当前功能当前功能
         
-如果圣会话_状态。get(' admin _ level '，0) >= 5:if ST . session _ state . get(' admin _ level '，0)> = 5:
-圣马克道(“-”)降价(“-”)
-如果圣巴顿("👑 管理员面板"，use _ container _ width = True):if ST . button("👑 管理员面板"，use_container_width=True):
-圣会话_状态。当前功能= t("管理面板")会话状态.当前功能= t("管理面板")
-重新运行()
+如果圣会话_状态得到。('管理员级别'，0) >= 5:如果圣。会议_ state。得到('管理员级别'，0)> = 5:session _ state。get(' admin _ level '，0) >= 5:if ST . session _ state . get(' admin _ level '，0)> = 5:('管理员级别'，0) >= 5:如果圣。会议_ state。得到('管理员级别'，0)> = 5:session _ state。get(' admin _ level '，0) >= 5:if ST . session _ state . if _ _ name _ _ = " _ _ main _ _ ":_ _ name _ _ = = " _ _ main _ _ (' admin _ level '，0)> = 5:
+圣马克道("-")降价(“-”、“-”)降价(“-”)
+如果圣巴顿("👑 管理员面板"，use _ container _ width = True):if ST . button("👑 管理员面板"，use_container_width=True):("👑 管理员面板"，use _ container _ width = True):if ST . button("👑 管理员面板"，use_container_width=True):
+圣会话_状态current _ function = t(“管理面板”)session _ state。current _ function = t("管理面板")会话状态。当前功能= t("管理面板")
+街道再放映()
     
-标题标题标题
+会话状态标题(t(“标题”))标题(t(“标题”)
     
 uploaded_file = st.file_uploader("上传视频"，type=["mp4 "，" mov "，" avi"])file_uploader("上传视频"，type=["mp4 "，" mov "，" avi"])
 如果上传_文件:如果上传_文件:
 视频路径=保存上传文件（上传文件)保存_上传_文件(上传_文件)
 st.session_state.video_path =视频路径会话状态.视频路径=视频路径
 信息=获取视频信息（视频路径)获取视频信息(视频路径)
-如果信息:
-圣成功上传成功！时长:{info['duration']:.1f}秒")
+如果信息:如果信息:
+圣成功上传成功！时长:{info['duration']:.1f}秒”)成功(f "上传成功！时长:{info['duration']:.1f}秒")
     
-if function == t("cut "):
+if function = = t(" cut "):if function = = t(" cut "):
 st.subheader(t("cut "))
-if ST . session _ state . get(' video _ path '):
-duration = get _ video _ info(ST . session _ state . video _ path)[" duration "]
-            start = st.number_input("开始时间(秒)", 0.0, duration, 0.0)
-end = st.number_input("结束时间（秒)"，0.0，持续时间，min(5.0，持续时间))
-如果圣巴顿(“开始剪切"):
-out = tempfile .命名临时文件(后缀=".mp4 "，delete=False).名字
-与圣斯宾纳(“剪切中..."):
-cut _ video _ ffmpeg(ST . session _ state . video _ path，start，end，out)
-cut _ video _ ffmpeg(ST . session _ state。视频_路径，开始，结束，输出)
-开(出，“rb”)为f:
-st.download_button(t("download ")，f，file_name="cut.mp4 ")
-清理临时文件([out])
-否则:
-st.info(t("上传_优先"))
+如果圣会话_状态。get(' video _ path '):if ST . session _ state . get(' video _ path '):
+持续时间=获取视频信息(第一会话状态。video _ path)[" duration "]get _ video _ info(ST . session _ state . video _ path)[" duration "]
+start = st.number_input("开始时间（秒)",0.0,持续时间，0.0)数字_输入(“开始时间（秒)”，0.0，持续时间，0.0)
+end = st.number_input("结束时间（秒)",0.0,持续时间，min(5.0，持续时间))数字_输入(“结束时间（秒)"，0.0，持续时间，min(5.0，持续时间))
+如果圣巴顿("开始剪切”):如果圣巴顿(“开始剪切"):
+out = tempfile .命名临时文件(后缀=".mp4 "，delete=False).名字NamedTemporaryFile(后缀=".mp4 "，delete=False)。名字
+与圣斯宾纳("剪切中..."):用st.spinner(“剪切中..."):
+cut _ video _ ffmpeg(ST . session _ state。video _ path，start，end，out)cut _ video _ ffmpeg(ST . session _ state . video _ path，start，end，out)
+圣成功("完成!")成功(“完成!")
+开（出，“经常预算”)为f:开(出，“rb”)为f:
+st.download_button(t("download ")，f，file_name="cut.mp4 ")download _ button(t(" download ")，f，file _ name = " cut . MP4 ")
+清理临时文件([out])清理临时文件([out])
+否则:否则:
+st.info(t("上传_优先”)信息(t("upload_first "))
     
-elif函数== t("speed "):
-st.subheader(t("speed "))
-if ST . session _ state . get(' video _ path '):
-速度= st.number_input("速度倍数“，0.1，5.0，1.0，步长=0.1)
-如果圣巴顿(“应用变速"):
-out = tempfile .命名临时文件(后缀=".mp4 "，delete=False).名字
-与圣斯宾纳(“处理中..."):
-change_speed_ffmpeg(第一会话_状态.视频_路径，速度，输出)
-变化速度ffmpeg(第一会话_状态。视频_路径,速度,输出)
-开(出，“rb”)为f:
-st.download_button(t("download ")，f，file_name="speed.mp4 ")
-清理临时文件([out])
-否则:
-st.info(t("上传_优先"))
+ 否则如果函数== t("speed "):elif函数== t("speed "):
+ST . subheader(t(" speed "))subheader(t(" speed "))
+如果圣会话_状态。get(' video _ path '):if ST . session _ state . get(' video _ path '):
+速度=编号_输入("速度倍数",0.1,5.0,1.0,步长=0.1)数字输入(“速度倍数“，0.1，5.0，1.0，步长=0.1)
+如果圣巴顿("应用变速”):如果圣巴顿(“应用变速"):
+out = tempfile .命名临时文件(后缀=".mp4 "，delete=False).名字NamedTemporaryFile(后缀=".mp4 "，delete=False)。名字
+与圣斯宾纳("处理中..."):用st.spinner(“处理中..."):
+变化速度ffmpeg(第一会话_状态。视频_路径,速度,输出)change _ speed _ ffmpeg(ST . session _ state . video _ path，speed，out)
+圣成功("完成!")成功(“完成!")
+开（出，“经常预算”)为f:开(出，“rb”)为f:
+st.download_button(t("download ")，f，file_name="speed.mp4 ")download _ button(t(" download ")，f，file _ name = " speed . MP4 ")
+清理临时文件([out])清理临时文件([out])
+否则:否则:
+st.info(t("上传_优先")信息(t("上传_优先"))
     
-elif function == t("ai_assistant "):
+elif function = = t(" ai _ assistant "):elif function = = t(" ai _ assistant "):
 render_ai_assistant()
-elif函数== t("smart_matting "):
+否则如果函数= = t(" smart _ matting "):elif function = = t(" smart _ matting "):
 render_smart_matting()
-elif函数== t("material_library "):
-渲染_材质_库()
-elif函数== t("video_sites "):
-渲染视频网站()
-elif function == t("movie_search "):
-渲染_电影_搜索()
-elif函数== t("points_mall "):
-render _ points _商城()
-elif function == t("multi_track "):
-渲染多重轨迹()
-elif函数== t("security "):
+否则如果函数== t("material_library "):elif函数== t("material_library "):
+渲染_材质_库()渲染_材质_库()
+否则如果函数= = t(" video _ sites "):elif function = = t(" video _ sites "):
+渲染视频网站()渲染视频网站()
+elif function = = t(" movie _ search "):elif function = = t(" movie _ search "):
+渲染_电影_搜索()渲染_电影_搜索()
+否则如果函数= = t(" points _ mall "):elif function = = t(" points _ mall "):
+渲染点商城()渲染点数商城()
+elif function = = t(" multi _ track "):elif function = = t(" multi _ track "):
+渲染多重轨迹()render_multi_track()
+否则如果函数== t("security "):elif函数== t("security "):
 render_security()
-elif函数== t("about "):
-render_about()
-elif function == t("admin_panel "):
+否则如果函数== t("about "):elif函数== t("约"):
+render_about()render_about()
+elif function = = t(" admin _ panel "):elif function = = t(" admin _ panel "):
 render_admin_panel()
-render_admin_panel()
-ST . info(f " { t(' current _ function ')}:{ function }，{t('upload_first')} ")
+否则:否则:
+ST . info(f " { t(' current _ function ')}:{ function }，{t('upload_first')} ")info(f " { t(' current _ function ')}:{ function }，{ t(' upload _ first ')} ")
 
-if __name__ == "__main__ ":
-主要的(主要的
+if _ _ name _ _ = " _ _ main _ _ ":_ _ name _ _ = " _ _ main _ _ ":
+主要的主要的()
