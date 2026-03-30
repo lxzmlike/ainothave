@@ -1,6 +1,6 @@
 """
 小智 - 智能视频助手 v8.9
-新增：AI 助手自然语言理解 + 智能推荐 + 真实视频合成
+新增：AI 助手自然语言理解 + 智能推荐 + 真实视频合成 + 图文成片
 """
 
 import streamlit as st
@@ -17,9 +17,11 @@ import random
 import re
 import cv2
 import requests
+import jieba
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
-from moviepy.editor import VideoFileClip, concatenate_videoclips
+from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip
+from gtts import gTTS
 
 st.set_page_config(page_title="小智 - 智能视频助手", page_icon="🤖", layout="wide")
 
@@ -1009,7 +1011,67 @@ def synthesize_video_from_story(materials, output_path, progress_callback=None):
     for clip in clips:
         clip.close()
 
-# ========== 小智AI助手（重构为AI创作页） ==========
+# ========== 图文成片辅助函数 ==========
+def extract_keywords(text):
+    """提取文本关键词（简单版）"""
+    words = jieba.cut(text)
+    # 这里简化为只取前3个长度>1的词
+    keywords = [w for w in words if len(w) > 1][:3]
+    if not keywords:
+        keywords = ["创意"]
+    return keywords
+
+def text_to_audio(text, output_path):
+    """文本转语音，保存为 mp3"""
+    tts = gTTS(text=text, lang='zh-cn', slow=False)
+    tts.save(output_path)
+
+def generate_video_from_text(title, content):
+    """根据标题和正文生成视频，返回输出文件路径"""
+    # 1. 提取关键词
+    full_text = title + " " + content
+    keywords = extract_keywords(full_text)
+    
+    # 2. 匹配视频素材
+    matched_videos = []
+    for m in VIDEO_MATERIALS:
+        for tag in m["tags"]:
+            if tag in keywords:
+                matched_videos.append(m)
+    if not matched_videos:
+        matched_videos = VIDEO_MATERIALS[:2]  # 默认前两个
+    
+    # 3. 匹配音乐（简单示例，根据内容含“快乐”等词选择）
+    if any(word in full_text for word in ["快乐", "幸福", "喜悦"]):
+音乐=音乐_材料[0] #轻快吉他[0]  # 轻快吉他
+ 否则如果 任何的(单词在全文_文本为单词在["悲伤", "难过"]):任何的(单词在全文_文本为单词在 ["悲伤", "难过"]):
+音乐=音乐_材料[1] #舒缓钢琴[1]  # 舒缓钢琴
+    其他:
+音乐=音乐_材料[2] #动感节奏[2]  # 动感节奏
+    
+    # 4. 生成配音
+音频文件=临时文件。命名临时文件(后缀=. mp3，delete=False).名字命名临时文件(后缀=".mp3 "，delete=False)。名字
+文本到音频（全文,音频文件)文本到音频(全文，音频文件)
+    
+    # 5. 合成视频
+剪辑= [][]
+为m在匹配的_视频：
+本地路径=获取缓存视频(m['url'])获取缓存视频(m[' url '])
+剪辑=视频文件剪辑(本地路径)。子剪辑(0，min(5，VideoFileClip(local_path))。持续时间))
+夹子。附加（剪辑)附加(剪辑)
+final_clip =串联_视频剪辑（剪辑,方法= "合成")串联_视频剪辑(剪辑，方法= "合成")
+    # 添加配音
+audio_clip =音频文件剪辑（音频文件)音频文件剪辑(音频文件)
+最终剪辑=最终剪辑。设置_音频（音频_剪辑)设置_音频(音频_剪辑)
+    # 输出
+输出路径=临时文件。命名临时文件（后缀=".mp4 "，delete=False).名字命名临时文件(后缀=".mp4 "，delete=False)。名字
+最终_剪辑。写入_视频文件（输出路径,编解码器='libx264 '，音频编解码器='aac ')写入_视频文件(输出路径，编解码器='libx264 '，音频编解码器='aac ')
+    
+    # 清理临时文件
+为夹子在剪辑:
+夹子。关闭()关闭()
+音频_剪辑。关闭()关闭()
+返回输出路径# ========== 小智AI助手（重构为AI创作页） ==========
 def render_ai_creation_page():
     st.markdown("### 🤖 AI创作工具箱")
     
@@ -1061,27 +1123,27 @@ def render_ai_creation_page():
         tool_names = {t['func']: t['name'] for t in tools}
         st.markdown(f"### {tool_names[tool]}")
         
-        if tool == "story_to_video":
-            story_prompt = st.text_area("输入故事梗概", height=100, placeholder="例如：一个宇航员在火星上发现了一朵花")
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("生成分镜脚本", use_container_width=True):
-                    if story_prompt:
-                        with st.spinner("正在生成分镜..."):
-                            script = f"""
-                            镜头1：{story_prompt[:20]}... 引入场景（5秒）
+if tool == "story_to_video ":
+story_prompt = st.text_area("输入故事梗概"，高度=100，占位符= "例如：一个宇航员在火星上发现了一朵花")
+col1，col2 = st.columns(2)
+使用col1:
+如果圣巴顿(“生成分镜脚本"，use_container_width=True):
+如果故事_提示:
+与圣斯宾纳(“正在生成分镜..."):
+script = f " " "
+镜头1:{story_prompt[:20]}...引入场景(5秒)
                             镜头2：细节特写，展示关键元素（8秒）
                             镜头3：情感爆发或转折（5秒）
                             镜头4：结局，留下想象空间（4秒）
                             """
-                            st.success("分镜脚本已生成")
-                            st.text(script)
-                    else:
-                        st.warning("请输入故事梗概")
-            with col2:
-                if st.button("一键成片", use_container_width=True):
-                    if story_prompt:
-                        with st.spinner("正在从素材库选取片段..."):
+圣成功(“分镜脚本已生成")
+st.text(脚本)
+否则:
+st.warning("请输入故事梗概")
+使用col2:
+如果圣巴顿(“一键成片"，use_container_width=True):
+如果故事_提示:
+与圣斯宾纳(“正在从素材库选取片段..."):
                             materials = get_materials_for_story(story_prompt)
                             if materials:
                                 st.info(f"✅ 已匹配到 {len(materials)} 个相关素材：{', '.join([m['name'] for m in materials])}")
@@ -1108,10 +1170,14 @@ def render_ai_creation_page():
             content = st.text_area("正文", height=150, placeholder="输入你想表达的内容...")
             if st.button("生成视频", use_container_width=True):
                 if title and content:
-                    with st.spinner("正在生成视频..."):
-                        time.sleep(2)
-                        st.success("视频生成完成！点击下载（演示）")
-                        st.download_button("下载视频", data=b"fake video", file_name="text2video.mp4")
+                    with st.spinner("正在生成视频，请稍候..."):
+                        try:
+                            output_file = generate_video_from_text(title, content)
+                            st.success("视频生成完成！点击下载")
+                            with open(output_file, "rb") as f:
+                                st.download_button("下载视频", f, file_name="text2video.mp4", mime="video/mp4")
+                        except Exception as e:
+                            st.error(f"生成失败：{e}")
                 else:
                     st.warning("请填写标题和正文")
         
@@ -1407,36 +1473,34 @@ def render_my_page():
         with col3:
             if task["done"]:
                 st.success("已完成")
-            else:
-                if st.button("去完成", key=f"task_{task['name']}"):
-                    st.info("功能开发中，敬请期待！")
-    st.markdown("---")
+否则:
+如果圣巴顿(“去完成"，key=f"task_{task['name']} ":
+st.info("功能开发中,敬请期待!")
+圣马克道(“-”)
     
-    # 原有 tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📦 我的作品", "❤️ 我的收藏", "🌍 公益", "⚙️ 设置"])
-    with tab1:
-        st.markdown("#### 🖼️ 我的版图")
-        render_my_posters()
-        st.markdown("#### 🖼️ 我的壁纸")
-        render_my_wallpapers()
-    with tab2:
-        st.markdown("#### 💎 我的收藏")
-        render_my_collections()
-    with tab3:
-        render_welfare()
-        st.markdown("---")
-        render_jackpot()
-    with tab4:
-        if st.button("消息中心"):
-            render_messages()
-        st.markdown("---")
-        render_language()
-        st.markdown("---")
-        if st.button("退出登录"):
-            st.session_state.clear()
-            st.rerun()
-
-# ========== 界面函数 ==========
+# 原有制表符
+tab1，tab2，tab3，tab4 = st.tabs(["📦 我的作品", "❤️ 我的收藏", "🌍 公益", "⚙️ 设置"])
+使用表1:
+圣马克道(" # # # # #🖼️我的版图")
+render _ my _ posters()
+圣马克道(" # # # # #🖼️我的壁纸")
+渲染我的壁纸()
+使用表2:
+st.markdown("####💎 我的收藏")
+render_my_collections()
+使用表3:
+render_welfare()
+圣马克道(“-”)
+render_jackpot()
+使用表4:
+如果圣巴顿(“消息中心"):
+渲染消息()
+圣马克道(“-”)
+渲染语言()
+圣马克道(“-”)
+如果圣巴顿(“退出登录"):
+st.session_state.clear()
+圣雷恩河()# ========== 界面函数 ==========
 def render_auth():
     with st.sidebar:
         st.markdown("### 👤 用户中心")
@@ -1499,7 +1563,7 @@ def render_teleprompter():
         if script:
             st.markdown(f"""
             <div style="background: rgba(0,0,0,0.7); color: white; padding: 10px; border-radius: 10px; font-family: monospace; font-size: 20px; white-space: pre-wrap;">
-                {script}
+{script}
             </div>
             """, unsafe_allow_html=True)
             st.caption(f"滚动速度：{scroll_speed} 字/秒")
@@ -1549,65 +1613,65 @@ def render_meme_factory():
                             font = ImageFont.load_default()
                         draw.text((50, 50), meme_text, fill="white", font=font)
                         gif.save(out)
-                        st.success("GIF生成成功！")
-                        with open(out, "rb") as f:
-                            st.download_button("下载GIF", f, file_name="meme.gif")
-                    except Exception as e:
-                        st.error(f"添加文字失败：{e}")
-            else:
-                st.warning("请输入文字")
+st.success("GIF生成成功!")
+开(出，“rb”)为f:
+st.download_button("下载GIF "，f，file_name="meme.gif ")
+例外情况为e:
+标准误差(f "添加文字失败:{e} ")
+否则:
+st.warning("请输入文字")
 
 # ========== 主程序 ==========
 def main():
-    if 'language' not in st.session_state:
-        st.session_state.language = 'zh'
-    if st.session_state.get('remember_me', False):
-        if 'username' in st.session_state:
-            st.session_state.logged_in = True
+如果“语言”不在圣会话状态中:
+st.session_state.language = 'zh '
+如果圣会话_状态get(' remember _ me '，False):
+如果"用户名"在第一会话状态中：
+圣会话_状态. logged _ in = True
     
-    init_db()
-    init_poster_tables()
-    init_wallpaper_tables()
-    init_welfare_tables()
-    init_jackpot_tables()
+init_db()
+初始化_海报_表格()
+初始化_壁纸_表格()
+init_welfare_tables()
+init_jackpot_tables()
+init_jackpot_tables()
+st.session_state.language = 'zh '
+render_auth()
     
-    render_language()
-    render_auth()
-    
-    if not st.session_state.get('logged_in', False):
-        st.markdown("""
-        <div class="main-header">
-            <div style="font-size: 60px;">🤖</div>
-            <h1>小智 - 智能视频助手</h1>
-            <p>你的AI视频创作伙伴</p>
-        </div>
-        """, unsafe_allow_html=True)
-        st.info("👈 请先在左侧登录或注册")
-        return
+如果不是圣会话_状态get(' logged _ in '，False):
+圣马克道(""
+< div class="main-header " >
+< div style = " font-size:60px；">🤖</div >
+< h1 >小智-智能视频助手</h1 >
+< p >你的人工智能视频创作伙伴</p >
+</div >
+"""，unsafe_allow_html=True)
+st.info("👈 请先在左侧登录或注册")
+返回
     
     # 底部导航栏
-    if 'nav_index' not in st.session_state:
-        st.session_state.nav_index = 0
+st.rerun()
+如果"导航索引"不在第一会话状态中：
     
-    nav_items = ["🎬 剪辑", "🤖 AI创作", "📦 素材", "🌐 社区", "👤 我的"]
-    cols = st.columns(len(nav_items))
-    for i, name in enumerate(nav_items):
-        with cols[i]:
-            if st.button(name, use_container_width=True):
-                st.session_state.nav_index = i
-                st.rerun()
+nav_items = ["🎬 剪辑", "🤖人工智能创作", "📦 素材", "🌐 社区", "👤 我的"]
+cols = st.columns(len(nav_items))
+对于我，枚举中的名称(导航项目):
+带列[i]:
+if st.button(name，use_container_width=True):
+st.session_state.nav_index = i
+st.rerun()
     
     # 根据导航显示不同页面
-    if st.session_state.nav_index == 0:
-        render_clip_page()
-    elif st.session_state.nav_index == 1:
-        render_ai_creation_page()
-    elif st.session_state.nav_index == 2:
-        render_material_page()
-    elif st.session_state.nav_index == 3:
-        render_community_page()
-    else:
-        render_my_page()
+如果st.session_state.nav_index == 0:
+render_clip_page()
+ 否则如果第一会话状态。导航索引= = 1:
+render_ai_creation_page()
+ 否则如果第一会话状态。导航索引= = 2:
+render_material_page()
+否则如果第一会话状态. nav _ index = = 3:
+render_community_page()
+否则:
+render_my_page()
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__ ":
+主要的()
