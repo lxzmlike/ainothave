@@ -1,6 +1,6 @@
 """
 小智 - 智能视频助手 v8.9
-新增：AI 助手自然语言理解 + 智能推荐
+新增：AI 助手自然语言理解 + 智能推荐 + 真实视频合成
 """
 
 import streamlit as st
@@ -16,8 +16,10 @@ import time
 import random
 import re
 import cv2
+import requests
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
+from moviepy.editor import VideoFileClip, concatenate_videoclips
 
 st.set_page_config(page_title="小智 - 智能视频助手", page_icon="🤖", layout="wide")
 
@@ -414,7 +416,9 @@ def init_jackpot_tables():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
     conn.commit()
-    conn.close()def hash_password(password, salt=None):
+    conn.close()
+
+def hash_password(password, salt=None):
     if salt is None:
         salt = secrets.token_hex(16)
     pwd_hash = hashlib.sha256((password + salt).encode()).hexdigest()
@@ -750,7 +754,9 @@ def render_my_wallpapers():
 
 def render_wallpaper_stats():
     st.markdown("### 📊 壁纸统计")
-    st.info("壁纸统计")# ========== 公益系统 ==========
+    st.info("壁纸统计")
+
+# ========== 公益系统 ==========
 WELFARE_PROJECTS = [
     {"id": 1, "name": "乡村儿童视频课", "points": 100, "icon": "🏫", "impact": "支持1个孩子上一节视频课"},
     {"id": 2, "name": "环保视频计划", "points": 50, "icon": "🌍", "impact": "支持1个环保视频拍摄"},
@@ -925,7 +931,7 @@ def get_user_preferences(username):
         keywords = ["创意", "热门"]
     return keywords
 
-# ========== 素材库 ==========
+# ========== 素材库（扩充） ==========
 VIDEO_MATERIALS = [
     {"name": "夏日海滩", "tags": ["夏天", "海边"], "url": "https://www.w3schools.com/html/mov_bbb.mp4"},
     {"name": "城市夜景", "tags": ["城市", "夜景"], "url": "https://www.w3schools.com/html/movie.mp4"},
@@ -933,18 +939,25 @@ VIDEO_MATERIALS = [
     {"name": "萌宠日常", "tags": ["宠物"], "url": "https://www.w3schools.com/html/mov_bbb.mp4"},
     {"name": "旅行Vlog", "tags": ["旅行"], "url": "https://www.w3schools.com/html/mov_bbb.mp4"},
     {"name": "科技未来", "tags": ["科技"], "url": "https://www.w3schools.com/html/movie.mp4"},
+    {"name": "春日樱花", "tags": ["春天", "浪漫"], "url": "https://www.w3schools.com/html/mov_bbb.mp4"},
+    {"name": "雪山风景", "tags": ["冬天", "自然"], "url": "https://www.w3schools.com/html/movie.mp4"},
+    {"name": "街拍时尚", "tags": ["城市", "潮流"], "url": "https://www.w3schools.com/html/mov_bbb.mp4"},
 ]
 
 MUSIC_MATERIALS = [
     {"name": "轻快吉他", "tags": ["轻快"], "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"},
     {"name": "舒缓钢琴", "tags": ["舒缓"], "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"},
     {"name": "动感节奏", "tags": ["动感"], "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"},
+    {"name": "治愈系", "tags": ["治愈"], "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"},
+    {"name": "电子舞曲", "tags": ["电子"], "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"},
 ]
 
 TEXT_TEMPLATES = [
     {"name": "夏日文案", "text": "夏天的风，吹过海面", "tags": ["夏天"]},
     {"name": "旅行标语", "text": "在路上，遇见自己", "tags": ["旅行"]},
     {"name": "美食语录", "text": "唯有美食与爱不可辜负", "tags": ["美食"]},
+    {"name": "春日寄语", "text": "春风十里，不如你", "tags": ["春天"]},
+    {"name": "励志金句", "text": "努力是奇迹的另一个名字", "tags": ["励志"]},
 ]
 
 def get_materials_for_story(story_text):
@@ -958,329 +971,277 @@ def get_materials_for_story(story_text):
     if not selected:
         selected = {VIDEO_MATERIALS[0]["name"], VIDEO_MATERIALS[1]["name"]}
     result = [m for m in VIDEO_MATERIALS if m["name"] in selected]
-    return result# ========== 小智AI助手 ==========
-def render_ai_assistant():
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("🤖 小智AI助手")
-    
-    tab1, tab2, tab3, tab4 = st.tabs(["✂️ 剪辑指令", "📝 创意写作", "🎬 故事成片", "💡 创作灵感"])
-    
-    with tab1:
-        col1, col2 = st.columns([5, 1])
-        with col1:
-            user_input = st.text_input("", placeholder="💬 试试说：剪掉前5秒、加速2倍、导出GIF", key="ai_input")
-        with col2:
-            if st.button("🎤", key="voice_btn", help="点击说话"):
-                st.markdown("""
-                <script>
-                const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-                recognition.lang = 'zh-CN';
-                recognition.start();
-                recognition.onresult = function(event) {
-                    const text = event.results[0][0].transcript;
-                    document.querySelector('input[data-testid="stTextInput"]').value = text;
-                    const btn = document.querySelector('button[kind="primary"]');
-                    if (btn) btn.click();
-                };
-                </script>
-                """, unsafe_allow_html=True)
-                st.info("🎤 正在听你说话...")
-        if user_input:
-            cut_match = re.search(r'剪[掉切去]前?(\d+(?:\.\d+)?)\s*秒', user_input)
-            if cut_match:
-                start = 0
-                end = float(cut_match.group(1))
-                if st.session_state.get('video_path'):
-                    out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-                    cut_video(st.session_state.video_path, start, end, out)
-                    with open(out, "rb") as f:
-                        st.download_button("下载剪切后的视频", f, file_name="cut.mp4")
-                    st.success(f"✅ 已剪掉前 {end} 秒")
-                else:
-                    st.warning("请先上传视频")
-                st.stop()
-            speed_match = re.search(r'加速(\d+(?:\.\d+)?)\s*倍', user_input)
-            if speed_match:
-                speed = float(speed_match.group(1))
-                if st.session_state.get('video_path'):
-                    out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-                    speed_video(st.session_state.video_path, speed, out)
-                    with open(out, "rb") as f:
-                        st.download_button(f"下载 {speed}x 视频", f, file_name=f"speed_{speed}x.mp4")
-                    st.success(f"✅ 已加速 {speed} 倍")
-                else:
-                    st.warning("请先上传视频")
-                st.stop()
-            if "gif" in user_input.lower() or "动图" in user_input:
-                if st.session_state.get('video_path'):
-                    with st.expander("GIF参数", expanded=True):
-                        start = st.number_input("开始(秒)", 0.0, 10.0, 0.0)
-                        duration = st.number_input("时长(秒)", 1.0, 10.0, 3.0)
-                        if st.button("确认导出"):
-                            out = tempfile.NamedTemporaryFile(suffix=".gif", delete=False).name
-                            video_to_gif(st.session_state.video_path, out, start, duration)
-                            with open(out, "rb") as f:
-                                st.download_button("下载GIF", f, file_name="output.gif")
-                            st.success("✅ GIF已生成")
-                else:
-                    st.warning("请先上传视频")
-                st.stop()
-            st.info(f"收到：{user_input}，但我还不太理解，试试说“剪掉前5秒”、“加速2倍”或“导出GIF”")
-    
-    with tab2:
-        st.markdown("#### 📝 创意写作")
-        write_type = st.selectbox("选择写作类型", ["小说续写", "文案生成", "标题创作", "诗歌创作"])
-        prompt = st.text_area("输入你的灵感", height=100, placeholder="例如：写一段关于夏日海边的文字")
-        if st.button("✨ 生成", use_container_width=True):
-            if prompt:
-                with st.spinner("小智正在思考..."):
-                    if "小说" in write_type:
-                        result = "海浪拍打着礁石，夕阳把海面染成金色。她赤脚踩在沙滩上，留下一串深深浅浅的脚印..."
-                    elif "文案" in write_type:
-                        result = "🌊 夏日海边，藏着最温柔的风。带上相机，记录属于你的蓝色浪漫。#海边日记"
-                    elif "标题" in write_type:
-                        result = "《海边的夏天，每一帧都是电影》"
-                    else:
-                        result = "海风轻拂，浪花细语，夏日的海边是写给青春的一首诗。"
-                    st.success("生成成功！")
-                    st.text_area("结果", value=result, height=150)
-                    if st.button("保存到灵感库"):
-                        st.info("已保存到「我的灵感」")
-            else:
-                st.warning("请输入灵感")
-    
-    with tab3:
-        st.markdown("#### 🎬 AI故事成片")
-        story_prompt = st.text_area("输入故事梗概", height=100, placeholder="例如：一个宇航员在火星上发现了一朵花")
-        col1, col2 = st.columns(2)
-        with col1:
-            gen_script = st.button("生成分镜脚本", use_container_width=True)
-        with col2:
-            make_video = st.button("🎬 一键成片（AI自动合成）", use_container_width=True)
-        if gen_script and story_prompt:
-            with st.spinner("正在生成分镜..."):
-                script = f"""
-                镜头1：{story_prompt[:20]}... 引入场景（5秒）
-                镜头2：细节特写，展示关键元素（8秒）
-                镜头3：情感爆发或转折（5秒）
-                镜头4：结局，留下想象空间（4秒）
-                """
-                st.success("分镜脚本已生成")
-                st.text(script)
-        if make_video and story_prompt:
-            with st.spinner("小智正在根据你的故事从素材库选取片段..."):
-                materials = get_materials_for_story(story_prompt)
-                if materials:
-                    st.info(f"✅ 已匹配到 {len(materials)} 个相关素材：{', '.join([m['name'] for m in materials])}")
-                    st.markdown("**正在合成视频...（演示版）**")
-                    progress_bar = st.progress(0)
-                    for i in range(100):
-                        time.sleep(0.01)
-                        progress_bar.progress(i + 1)
-                    st.success("视频合成完成！点击下载（演示文件）")
-                    st.download_button("下载视频", data=b"fake video data", file_name="output.mp4", mime="video/mp4")
-                else:
-                    st.warning("未能匹配到素材，请尝试更具体的故事描述，如“海边夏日”、“科技未来”等。")
-    
-    with tab4:
-        st.markdown("#### 💡 创作灵感")
-        st.markdown("告诉我你想创作什么，小智给你灵感建议，还能生成文案和分镜脚本！")
-        user_idea = st.text_input("", placeholder="例如：做一个关于夏天海边的短视频", key="inspire_input")
-        if st.button("🎯 分析灵感", use_container_width=True):
-            if user_idea:
-                keywords = []
-                idea_lower = user_idea.lower()
-                keyword_map = {
-                    "夏天": ["夏天", "夏日", "summer"],
-                    "海边": ["海边", "沙滩", "海", "beach"],
-                    "旅行": ["旅行", "旅游", "trip"],
-                    "美食": ["美食", "吃", "food"],
-                    "宠物": ["宠物", "猫", "狗", "pet"],
-                    "教程": ["教程", "教学", "tutorial"],
-                    "vlog": ["vlog", "日常", "vlog"],
-                    "科技": ["科技", "技术", "tech"],
-                    "情感": ["情感", "爱情", "治愈", "heartwarming"]
-                }
-                for tag, words in keyword_map.items():
-                    if any(w in idea_lower for w in words):
-                        keywords.append(tag)
-                if not keywords:
-                    keywords = ["创意"]
-                st.success(f"✨ 小智分析：你想创作关于「{', '.join(keywords)}」的内容")
-                st.markdown("**📝 为你生成的文案**")
-                if "夏天" in keywords:
-                    if "海边" in keywords:
-                        st.markdown("• 🌊 夏天的海，是天空的镜子。风吹过，带走所有烦恼。")
-                        st.markdown("• 🏖️ 赤脚踩在沙滩上，浪花吻过脚趾，这个夏天，我们去看海吧。")
-                    else:
-                        st.markdown("• ☀️ 蝉鸣的午后，冰镇的西瓜，是夏天最动人的音符。")
-                        st.markdown("• 🌻 向日葵追逐阳光，就像我们追逐梦想，夏天，就是向上的季节。")
-                if "旅行" in keywords:
-                    st.markdown("• ✈️ 在路上，遇见最美的风景，也遇见最好的自己。")
-                    st.markdown("• 🎒 背包里装的是梦想，脚下走的是远方。")
-                if "美食" in keywords:
-                    st.markdown("• 🍜 唯有美食与爱不可辜负，用镜头记录每一份温暖。")
-                    st.markdown("• 🍰 一口甜蜜，一段回忆，美食是最好的治愈。")
-                if "宠物" in keywords:
-                    st.markdown("• 🐕 有你的每一天，都是晴天。记录毛孩子的可爱瞬间。")
-                    st.markdown("• 🐱 它不懂你的世界，但它的世界全是你。")
-                if "科技" in keywords:
-                    st.markdown("• 🚀 科技让想象触手可及，探索未来，从此刻开始。")
-                    st.markdown("• 💡 每一个创意，都可能改变世界。")
-                if "情感" in keywords:
-                    st.markdown("• ❤️ 时光慢些吧，让我多陪陪重要的人。")
-                    st.markdown("• 🌈 爱，是平淡日子里的光。")
-                if not any(k in keywords for k in ["夏天","旅行","美食","宠物","科技","情感"]):
-                    st.markdown(f"• 🎨 关于「{user_idea[:30]}」的创意，用镜头讲述你的故事。")
-                    st.markdown("• 💡 每一个灵感都值得被记录，开始创作吧！")
-                st.markdown("**🎬 简易分镜脚本（可直接使用）**")
-                if "夏天" in keywords and "海边" in keywords:
-                    st.markdown("""
-                    1. 全景：海浪拍打沙滩（3秒）  
-                    2. 特写：脚踩在湿沙上（2秒）  
-                    3. 中景：人物望向远方（3秒）  
-                    4. 特写：贝壳被浪冲上来（2秒）  
-                    5. 全景：夕阳下的海岸线（4秒）
-                    """)
-                elif "旅行" in keywords:
-                    st.markdown("""
-                    1. 快速剪辑：火车窗外风景（2秒）  
-                    2. 中景：背包客行走（3秒）  
-                    3. 特写：地图被风吹动（2秒）  
-                    4. 延时：云卷云舒（3秒）  
-                    5. 自拍镜头：对着镜头微笑（2秒）
-                    """)
-                elif "美食" in keywords:
-                    st.markdown("""
-                    1. 特写：食材落入锅中（2秒）  
-                    2. 中景：烹饪过程（3秒）  
-                    3. 特写：食物出锅热气（2秒）  
-                    4. 餐桌全景：摆盘（2秒）  
-                    5. 人物品尝的满足表情（3秒）
-                    """)
-                elif "宠物" in keywords:
-                    st.markdown("""
-                    1. 宠物睡觉特写（2秒）  
-                    2. 玩耍时的追逐（3秒）  
-                    3. 主人抚摸宠物的温馨镜头（2秒）  
-                    4. 宠物歪头卖萌（2秒）  
-                    5. 夕阳下，宠物与主人的背影（3秒）
-                    """)
-                else:
-                    st.markdown("""
-                    1. 开头：引入主题（3秒）  
-                    2. 发展：展示核心内容（5秒）  
-                    3. 高潮：最精彩部分（4秒）  
-                    4. 结尾：总结或升华（3秒）
-                    """)
-                st.markdown("**🎵 配乐建议**")
-                if "夏天" in keywords:
-                    st.markdown("- 🎶 轻快吉他曲《夏日午后》")
-                elif "旅行" in keywords:
-                    st.markdown("- 🎶 民谣《去远方》")
-                elif "美食" in keywords:
-                    st.markdown("- 🎶 欢快钢琴曲《美味时光》")
-                elif "宠物" in keywords:
-                    st.markdown("- 🎶 温暖轻音乐《陪伴》")
-                elif "科技" in keywords:
-                    st.markdown("- 🎶 电子音乐《未来之光》")
-                elif "情感" in keywords:
-                    st.markdown("- 🎶 舒缓钢琴曲《时光》")
-                else:
-                    st.markdown("- 🎶 舒缓纯音乐《梦想的旅程》")
-                st.markdown("**📦 推荐素材（可在「仓库」找到）**")
-                if "夏天" in keywords:
-                    st.markdown("- 🎬 夏日海滩视频片段（素材库）")
-                    st.markdown("- 🌊 海浪声音效（音效库）")
-                if "海边" in keywords:
-                    st.markdown("- 🏖️ 沙滩漫步镜头（素材库）")
-                if "旅行" in keywords:
-                    st.markdown("- ✈️ 旅行Vlog片段（素材库）")
-                if "美食" in keywords:
-                    st.markdown("- 🍜 美食特写视频（素材库）")
-                if "宠物" in keywords:
-                    st.markdown("- 🐕 萌宠日常视频（素材库）")
-                if "科技" in keywords:
-                    st.markdown("- 🖥️ 科技感转场特效（特效库）")
-                st.info("💡 你可以根据这些灵感，去「仓库」找素材，或用「提词拍摄」录一段视频。")
-            else:
-                st.warning("请输入你想创作的内容")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+    return result
 
-# ========== 滚筒式板块切换（已废弃，改用底部导航）==========
-def render_core_creation():
-    st.markdown("### 🎬 核心创作引擎")
-    st.markdown("""
-    <div class="upload-card">
-        <div style="font-size: 48px;">📤</div>
-        <h3>上传视频</h3>
-        <p>拖拽文件到这里，或点击浏览</p>
-        <p style="color: #999;">支持 MP4、MOV、AVI 格式</p>
-    </div>
-    """, unsafe_allow_html=True)
-    uploaded = st.file_uploader("", type=["mp4", "mov", "avi"], label_visibility="collapsed", key="core_upload")
+# ========== 视频合成辅助函数 ==========
+CACHE_DIR = "cached_videos"
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+def download_video(url, save_path):
+    """下载远程视频到本地"""
+    r = requests.get(url, stream=True)
+    with open(save_path, 'wb') as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            f.write(chunk)
+    return save_path
+
+def get_cached_video(url):
+    """获取本地缓存的视频路径，如果不存在则下载"""
+    filename = hashlib.md5(url.encode()).hexdigest() + ".mp4"
+    cache_path = os.path.join(CACHE_DIR, filename)
+    if not os.path.exists(cache_path):
+        download_video(url, cache_path)
+    return cache_path
+
+def synthesize_video_from_story(materials, output_path, progress_callback=None):
+    """将匹配到的素材列表合成视频"""
+    clips = []
+    for i, material in enumerate(materials):
+        local_path = get_cached_video(material['url'])
+        clip = VideoFileClip(local_path)
+        # 可选：截取片段（比如只取前5秒）
+        # clip = clip.subclip(0, min(5, clip.duration))
+        clips.append(clip)
+        if progress_callback:
+            progress_callback((i+1)/len(materials))
+    final_clip = concatenate_videoclips(clips, method="compose")
+    final_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
+    for clip in clips:
+        clip.close()
+
+# ========== 小智AI助手（重构为AI创作页） ==========
+def render_ai_creation_page():
+    st.markdown("### 🤖 AI创作工具箱")
+    
+    # 今日推荐工具
+    st.markdown("#### 🌟 今日推荐")
+    with st.container():
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            st.markdown("<div style='font-size: 48px;'>🎬</div>", unsafe_allow_html=True)
+        with col2:
+            st.markdown("**AI故事成片**\n只需输入故事梗概，AI自动生成分镜脚本并匹配素材，一键合成视频。")
+            if st.button("立即体验", key="today_tool"):
+                st.session_state.current_ai_tool = "story_to_video"
+                st.rerun()
+    st.markdown("---")
+    
+    # 工具列表
+    tools = [
+        {"icon": "🎬", "name": "AI故事成片", "desc": "输入故事，生成分镜脚本和视频", "func": "story_to_video"},
+        {"icon": "📝", "name": "图文成片", "desc": "输入文字，自动生成视频", "func": "text_to_video"},
+        {"icon": "✂️", "name": "AI剪视频", "desc": "智能分析视频，推荐剪辑点", "func": "ai_cut"},
+        {"icon": "🎬", "name": "AI视频生成", "desc": "文本描述生成视频", "func": "text_to_video_advanced"},
+        {"icon": "🎤", "name": "智能提词拍摄", "desc": "提词器+AI台词生成", "func": "teleprompter"},
+        {"icon": "🎭", "name": "表情包工厂", "desc": "从视频制作GIF表情", "func": "meme_factory"},
+        {"icon": "🎵", "name": "变声器", "desc": "改变音频音色", "func": "voice_changer"},
+        {"icon": "🏆", "name": "每日挑战", "desc": "完成创作任务赢积分", "func": "daily_challenge"},
+    ]
+    
+    # 2列网格
+    cols = st.columns(2)
+    for i, tool in enumerate(tools):
+        with cols[i % 2]:
+            with st.container():
+                st.markdown(f"""
+                <div style="background: white; border-radius: 16px; padding: 15px; margin-bottom: 15px;">
+                    <div style="font-size: 32px;">{tool['icon']}</div>
+                    <div><strong>{tool['name']}</strong></div>
+                    <div style="color: gray; font-size: 12px;">{tool['desc']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button(f"使用 {tool['name']}", key=tool['func'], use_container_width=True):
+                    st.session_state.current_ai_tool = tool['func']
+                    st.rerun()
+    
+    # 显示选中的工具界面
+    if 'current_ai_tool' in st.session_state:
+        tool = st.session_state.current_ai_tool
+        st.markdown("---")
+        tool_names = {t['func']: t['name'] for t in tools}
+        st.markdown(f"### {tool_names[tool]}")
+        
+        if tool == "story_to_video":
+            story_prompt = st.text_area("输入故事梗概", height=100, placeholder="例如：一个宇航员在火星上发现了一朵花")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("生成分镜脚本", use_container_width=True):
+                    if story_prompt:
+                        with st.spinner("正在生成分镜..."):
+                            script = f"""
+                            镜头1：{story_prompt[:20]}... 引入场景（5秒）
+                            镜头2：细节特写，展示关键元素（8秒）
+                            镜头3：情感爆发或转折（5秒）
+                            镜头4：结局，留下想象空间（4秒）
+                            """
+                            st.success("分镜脚本已生成")
+                            st.text(script)
+                    else:
+                        st.warning("请输入故事梗概")
+            with col2:
+                if st.button("一键成片", use_container_width=True):
+                    if story_prompt:
+                        with st.spinner("正在从素材库选取片段..."):
+                            materials = get_materials_for_story(story_prompt)
+                            if materials:
+                                st.info(f"✅ 已匹配到 {len(materials)} 个相关素材：{', '.join([m['name'] for m in materials])}")
+                                progress_bar = st.progress(0)
+                                def update_progress(p):
+                                    progress_bar.progress(int(p * 100))
+                                output_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+                                try:
+                                    synthesize_video_from_story(materials, output_file, progress_callback=update_progress)
+                                    st.success("视频合成完成！点击下载")
+                                    with open(output_file, "rb") as f:
+                                        st.download_button("下载视频", f, file_name="story_video.mp4", mime="video/mp4")
+                                except Exception as e:
+                                    st.error(f"合成失败：{e}")
+                                progress_bar.empty()
+                            else:
+                                st.warning("未能匹配到素材，请尝试更具体的故事描述")
+                    else:
+                        st.warning("请输入故事梗概")
+        
+        elif tool == "text_to_video":
+            st.markdown("#### 图文成片")
+            title = st.text_input("标题", placeholder="请输入视频标题")
+            content = st.text_area("正文", height=150, placeholder="输入你想表达的内容...")
+            if st.button("生成视频", use_container_width=True):
+                if title and content:
+                    with st.spinner("正在生成视频..."):
+                        time.sleep(2)
+                        st.success("视频生成完成！点击下载（演示）")
+                        st.download_button("下载视频", data=b"fake video", file_name="text2video.mp4")
+                else:
+                    st.warning("请填写标题和正文")
+        
+        elif tool == "ai_cut":
+            st.info("AI剪视频功能开发中，敬请期待！")
+        elif tool == "text_to_video_advanced":
+            st.info("AI视频生成功能开发中，敬请期待！")
+        elif tool == "teleprompter":
+            render_teleprompter()
+        elif tool == "meme_factory":
+            render_meme_factory()
+        elif tool == "voice_changer":
+            st.info("变声器功能开发中，敬请期待！")
+        elif tool == "daily_challenge":
+            st.info("每日挑战功能开发中，敬请期待！")
+        
+        if st.button("← 返回工具箱", use_container_width=True):
+            del st.session_state.current_ai_tool
+            st.rerun()
+
+# ========== 剪辑页面 ==========
+def render_clip_page():
+    # 模板中心
+    st.markdown("#### 🎨 热门模板")
+    templates = [
+        {"name": "春日回忆", "image": "https://picsum.photos/300/200?random=1", "desc": "春天主题，温暖治愈"},
+        {"name": "旅行Vlog", "image": "https://picsum.photos/300/200?random=2", "desc": "旅行风景，自由轻松"},
+        {"name": "美食诱惑", "image": "https://picsum.photos/300/200?random=3", "desc": "美食特写，诱人口感"},
+    ]
+    cols = st.columns(3)
+    for i, tpl in enumerate(templates):
+        with cols[i]:
+            st.image(tpl["image"], use_column_width=True)
+            st.caption(f"**{tpl['name']}**\n{tpl['desc']}")
+            if st.button(f"使用模板", key=f"tpl_{i}"):
+                st.info(f"模板 {tpl['name']} 已添加到待编辑列表（功能开发中）")
+    st.markdown("---")
+    
+    st.markdown("### 🎬 开始创作")
+    uploaded = st.file_uploader("", type=["mp4", "mov", "avi"], label_visibility="collapsed", key="clip_upload")
     if uploaded:
         video_path = save_uploaded_file(uploaded)
         st.session_state.video_path = video_path
         st.video(video_path)
         st.success("✅ 上传成功！")
-    st.markdown("#### ✂️ 剪辑工具")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        if st.button("剪切视频", use_container_width=True):
-            if st.session_state.get('video_path'):
-                dur = get_video_info(st.session_state.video_path)["duration"]
-                with st.expander("设置剪切时间", expanded=True):
-                    start = st.number_input("开始(秒)", 0.0, dur, 0.0)
-                    end = st.number_input("结束(秒)", 0.0, dur, min(5.0, dur))
-                    if st.button("确认剪切"):
-                        out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-                        cut_video(st.session_state.video_path, start, end, out)
-                        with open(out, "rb") as f:
-                            st.download_button("下载", f, file_name="cut.mp4")
-            else:
-                st.warning("请先上传视频")
-    with col2:
-        if st.button("视频变速", use_container_width=True):
-            if st.session_state.get('video_path'):
-                with st.expander("选择速度", expanded=True):
-                    def apply_speed(s):
-                        out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-                        speed_video(st.session_state.video_path, s, out)
-                        with open(out, "rb") as f:
-                            st.download_button("下载", f, file_name=f"speed_{s}x.mp4")
-                    cols_s = st.columns(4)
-                    with cols_s[0]:
-                        if st.button("0.5x"): apply_speed(0.5)
-                    with cols_s[1]:
-                        if st.button("1.0x"): apply_speed(1.0)
-                    with cols_s[2]:
-                        if st.button("1.5x"): apply_speed(1.5)
-                    with cols_s[3]:
-                        if st.button("2.0x"): apply_speed(2.0)
-                    speed = st.number_input("自定义倍数", 0.5, 2.0, 1.0, step=0.1)
-                    if st.button("应用自定义"):
-                        apply_speed(speed)
-            else:
-                st.warning("请先上传视频")
-    with col3:
-        if st.button("导出GIF", use_container_width=True):
-            if st.session_state.get('video_path'):
-                with st.expander("设置GIF参数", expanded=True):
-                    start = st.number_input("开始时间(秒)", 0.0, 10.0, 0.0)
-                    duration = st.number_input("时长(秒)", 1.0, 10.0, 3.0)
-                    if st.button("确认导出"):
-                        out = tempfile.NamedTemporaryFile(suffix=".gif", delete=False).name
-                        video_to_gif(st.session_state.video_path, out, start, duration)
-                        with open(out, "rb") as f:
-                            st.download_button("下载", f, file_name="output.gif")
-            else:
-                st.info("请先上传视频")
-    with col4:
-        if st.button("美颜滤镜", use_container_width=True):
-            st.info("美颜滤镜开发中，敬请期待")def render_asset_system():
-    st.markdown("### 💰 数字资产系统")
+        
+        st.markdown("#### ✂️ 剪辑工具")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            if st.button("剪切视频", use_container_width=True):
+                if st.session_state.get('video_path'):
+                    dur = get_video_info(st.session_state.video_path)["duration"]
+                    with st.expander("设置剪切时间", expanded=True):
+                        start = st.number_input("开始(秒)", 0.0, dur, 0.0)
+                        end = st.number_input("结束(秒)", 0.0, dur, min(5.0, dur))
+                        if st.button("确认剪切"):
+                            out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+                            cut_video(st.session_state.video_path, start, end, out)
+                            with open(out, "rb") as f:
+                                st.download_button("下载", f, file_name="cut.mp4")
+                else:
+                    st.warning("请先上传视频")
+        with col2:
+            if st.button("视频变速", use_container_width=True):
+                if st.session_state.get('video_path'):
+                    with st.expander("选择速度", expanded=True):
+                        def apply_speed(s):
+                            out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+                            speed_video(st.session_state.video_path, s, out)
+                            with open(out, "rb") as f:
+                                st.download_button("下载", f, file_name=f"speed_{s}x.mp4")
+                        cols_s = st.columns(4)
+                        with cols_s[0]:
+                            if st.button("0.5x"): apply_speed(0.5)
+                        with cols_s[1]:
+                            if st.button("1.0x"): apply_speed(1.0)
+                        with cols_s[2]:
+                            if st.button("1.5x"): apply_speed(1.5)
+                        with cols_s[3]:
+                            if st.button("2.0x"): apply_speed(2.0)
+                        speed = st.number_input("自定义倍数", 0.5, 2.0, 1.0, step=0.1)
+                        if st.button("应用自定义"):
+                            apply_speed(speed)
+                else:
+                    st.warning("请先上传视频")
+        with col3:
+            if st.button("导出GIF", use_container_width=True):
+                if st.session_state.get('video_path'):
+                    with st.expander("设置GIF参数", expanded=True):
+                        start = st.number_input("开始时间(秒)", 0.0, 10.0, 0.0)
+                        duration = st.number_input("时长(秒)", 1.0, 10.0, 3.0)
+                        if st.button("确认导出"):
+                            out = tempfile.NamedTemporaryFile(suffix=".gif", delete=False).name
+                            video_to_gif(st.session_state.video_path, out, start, duration)
+                            with open(out, "rb") as f:
+                                st.download_button("下载", f, file_name="output.gif")
+                else:
+                    st.info("请先上传视频")
+        with col4:
+            if st.button("美颜滤镜", use_container_width=True):
+                st.info("美颜滤镜开发中，敬请期待")
+    else:
+        # 未上传时显示大按钮
+        st.markdown("""
+        <div style="text-align:center; padding: 50px; border: 2px dashed #ccc; border-radius: 20px;">
+            <div style="font-size: 48px;">📤</div>
+            <p>点击或拖拽视频开始创作</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("#### 🔥 热门工具")
+    hot_tools = [
+        ("🎬 AI故事成片", "ai_story"),
+        ("📝 图文成片", "text2video"),
+        ("✂️ AI剪视频", "ai_cut"),
+        ("🎤 智能提词", "teleprompter"),
+    ]
+    cols = st.columns(2)
+    for i, (name, key) in enumerate(hot_tools):
+        with cols[i % 2]:
+            if st.button(name, use_container_width=True):
+                st.session_state.nav_index = 1
+                st.session_state.current_ai_tool = key
+                st.rerun()
+
+# ========== 素材页面 ==========
+def render_material_page():
+    st.markdown("### 📦 素材库")
+    
+    # 智能推荐
     st.markdown("#### 🧠 为你推荐")
     preferences = get_user_preferences(st.session_state.username)
     recommended = []
@@ -1297,74 +1258,84 @@ def render_core_creation():
         with cols[i]:
             st.video(m["url"], format="video/mp4", start_time=0)
             st.caption(f"**{m['name']}**  /  {' '.join(['#'+t for t in m['tags']])}")
-            if st.button(f"应用 {m['name']}", key=f"rec_{i}"):
-                st.info(f"已将 {m['name']} 添加到待编辑列表（功能开发中）")
+            if st.button(f"应用", key=f"rec_{i}"):
+                st.info(f"已将 {m['name']} 添加到待编辑列表")
+    
     st.markdown("---")
-    st.markdown("#### 🎨 版图系统")
-    if st.button("进入版图系统", use_container_width=True):
-        poster_tabs = st.tabs(["✨ 生成版图", "🛒 版图商城", "🖼️ 我的版图", "💎 我的收藏", "📊 版图统计"])
-        with poster_tabs[0]:
-            render_poster_generator()
-        with poster_tabs[1]:
-            render_poster_mall()
-        with poster_tabs[2]:
-            render_my_posters()
-        with poster_tabs[3]:
-            render_my_collections()
-        with poster_tabs[4]:
-            render_poster_stats()
-    st.markdown("#### 🖼️ 壁纸系统")
-    if st.button("进入壁纸系统", use_container_width=True):
-        wallpaper_tabs = st.tabs(["🎨 创作壁纸", "🛒 壁纸商城", "🖼️ 我的壁纸", "📊 壁纸统计"])
-        with wallpaper_tabs[0]:
-            render_wallpaper_generator()
-        with wallpaper_tabs[1]:
-            render_wallpaper_mall()
-        with wallpaper_tabs[2]:
-            render_my_wallpapers()
-        with wallpaper_tabs[3]:
-            render_wallpaper_stats()
+    
+    # 分类标签
+    tab1, tab2, tab3, tab4 = st.tabs(["🎬 视频素材", "🎵 背景音乐", "📝 文字模板", "🎨 数字资产"])
+    
+    with tab1:
+        cols = st.columns(3)
+        for i, m in enumerate(VIDEO_MATERIALS):
+            with cols[i % 3]:
+                st.video(m["url"], format="video/mp4", start_time=0)
+                st.caption(f"**{m['name']}**  /  {' '.join(['#'+t for t in m['tags']])}")
+                if st.button(f"应用", key=f"video_{i}"):
+                    st.info(f"已将 {m['name']} 添加到待编辑列表")
+    
+    with tab2:
+        cols = st.columns(3)
+        for i, m in enumerate(MUSIC_MATERIALS):
+            with cols[i % 3]:
+                st.audio(m["url"], format="audio/mp3")
+                st.caption(f"**{m['name']}**")
+                if st.button(f"应用", key=f"music_{i}"):
+                    st.info(f"已将 {m['name']} 添加到配乐列表")
+    
+    with tab3:
+        cols = st.columns(3)
+        for i, tpl in enumerate(TEXT_TEMPLATES):
+            with cols[i % 3]:
+                st.markdown(f"<div style='background:#f5f5f5; padding:10px; border-radius:10px;'>{tpl['text']}</div>", unsafe_allow_html=True)
+                st.caption(f"**{tpl['name']}**")
+                if st.button(f"复制", key=f"text_{i}"):
+                    st.info(f"已复制到剪贴板")
+    
+    with tab4:
+        st.markdown("#### 版图系统")
+        if st.button("进入版图系统", use_container_width=True):
+            with st.expander("版图系统", expanded=True):
+                poster_tabs = st.tabs(["✨ 生成版图", "🛒 版图商城", "🖼️ 我的版图", "💎 我的收藏", "📊 版图统计"])
+                with poster_tabs[0]:
+                    render_poster_generator()
+                with poster_tabs[1]:
+                    render_poster_mall()
+                with poster_tabs[2]:
+                    render_my_posters()
+                with poster_tabs[3]:
+                    render_my_collections()
+                with poster_tabs[4]:
+                    render_poster_stats()
+        st.markdown("#### 壁纸系统")
+        if st.button("进入壁纸系统", use_container_width=True):
+            with st.expander("壁纸系统", expanded=True):
+                wallpaper_tabs = st.tabs(["🎨 创作壁纸", "🛒 壁纸商城", "🖼️ 我的壁纸", "📊 壁纸统计"])
+                with wallpaper_tabs[0]:
+                    render_wallpaper_generator()
+                with wallpaper_tabs[1]:
+                    render_wallpaper_mall()
+                with wallpaper_tabs[2]:
+                    render_my_wallpapers()
+                with wallpaper_tabs[3]:
+                    render_wallpaper_stats()
+
+# ========== 社区页面 ==========
+def render_community_page():
+    st.markdown("### 🌐 灵感社区")
+    
+    # 热门话题
+    st.markdown("#### 🔥 热门话题")
+    topics = ["#夏日创作", "#AI故事", "#旅行Vlog", "#美食日记"]
+    cols = st.columns(len(topics))
+    for i, topic in enumerate(topics):
+        with cols[i]:
+            if st.button(topic, use_container_width=True):
+                st.info(f"话题 {topic} 功能开发中，敬请期待！")
     st.markdown("---")
-    st.markdown("#### 📦 官方素材库")
-    st.markdown("试试这些免费素材，一键应用到你的创作中")
-    st.markdown("**🎬 视频素材**")
-    cols = st.columns(3)
-    for i, m in enumerate(VIDEO_MATERIALS):
-        with cols[i % 3]:
-            st.video(m["url"], format="video/mp4", start_time=0)
-            st.caption(f"**{m['name']}**  /  {' '.join(['#'+t for t in m['tags']])}")
-            if st.button(f"应用 {m['name']}", key=f"apply_video_{i}"):
-                st.info(f"已将 {m['name']} 添加到待编辑列表（功能开发中）")
-    st.markdown("**🎵 背景音乐**")
-    cols = st.columns(3)
-    for i, m in enumerate(MUSIC_MATERIALS):
-        with cols[i % 3]:
-            st.audio(m["url"], format="audio/mp3")
-            st.caption(f"**{m['name']}**  /  {' '.join(['#'+t for t in m['tags']])}")
-            if st.button(f"应用 {m['name']}", key=f"apply_music_{i}"):
-                st.info(f"已将 {m['name']} 添加到配乐列表（功能开发中）")
-    st.markdown("**📝 文字模板**")
-    cols = st.columns(3)
-    for i, tpl in enumerate(TEXT_TEMPLATES):
-        with cols[i % 3]:
-            st.markdown(f"<div style='background:#f5f5f5; padding:10px; border-radius:10px;'>{tpl['text']}</div>", unsafe_allow_html=True)
-            st.caption(f"**{tpl['name']}**  /  {' '.join(['#'+tg for tg in tpl['tags']])}")
-            if st.button(f"复制 {tpl['name']}", key=f"copy_text_{i}"):
-                st.info(f"已复制到剪贴板（功能开发中）")
-
-def render_economy():
-    st.markdown("### 💰 经济激励闭环")
-    points = get_points(st.session_state.username)
-    st.metric("我的积分", points)
-    st.markdown("#### 🌍 公益积分")
-    if st.button("做公益", use_container_width=True):
-        render_welfare()
-    st.markdown("#### 🏆 奖池金")
-    if st.button("查看奖池", use_container_width=True):
-        render_jackpot()
-
-def render_community():
-    st.markdown("### 👥 社区与互动")
+    
+    # 展示作品
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
     c.execute("SELECT id, title, price_points, image_path FROM posters WHERE status='on_sale' ORDER BY created_at DESC LIMIT 6")
@@ -1386,34 +1357,136 @@ def render_community():
         st.image("https://picsum.photos/300/200?random=2", caption="示例作品2")
         st.caption("快去创作你的第一个作品吧！")
 
-def render_toolbox():
-    st.markdown("### 🛠️ 工具箱")
-    st.markdown("这里集结了各种有趣的创作工具，快试试吧！")
-    tools = [
-        ("🎬 AI故事成片", "story", "开发中"),
-        ("🖼️ 图文成片", "image_text", "开发中"),
-        ("🎤 提词拍摄", "teleprompter", "ready"),
-        ("😜 变声器", "voice", "开发中"),
-        ("🎭 表情包工厂", "meme", "ready"),
-        ("🏆 每日挑战", "challenge", "开发中"),
+# ========== 我的页面 ==========
+def render_my_page():
+    st.markdown("### 👤 我的")
+    
+    points = get_points(st.session_state.username)
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM posters WHERE creator = ?", (st.session_state.username,))
+    poster_count = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM wallpapers WHERE creator = ?", (st.session_state.username,))
+    wallpaper_count = c.fetchone()[0]
+    conn.close()
+    welfare = get_welfare_points(st.session_state.username)
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("积分", points)
+    with col2:
+        st.metric("作品", poster_count + wallpaper_count)
+    with col3:
+        st.metric("公益", welfare)
+    
+    # 创作日历（模拟）
+    st.markdown("#### 📅 创作日历")
+    days = ["一", "二", "三", "四", "五", "六", "日"]
+    import random
+    active = [random.choice([0,1,1,1,2,2]) for _ in range(7)]
+    cols = st.columns(7)
+    for i, (day, act) in enumerate(zip(days, active)):
+        with cols[i]:
+            color = "#4caf50" if act >= 2 else "#ff9800" if act == 1 else "#ddd"
+            st.markdown(f"<div style='text-align:center; background:{color}; border-radius:8px; padding:5px;'>{day}<br>{'🔥'*act}</div>", unsafe_allow_html=True)
+    st.caption("绿色：高产日 | 橙色：有创作 | 灰色：无活动")
+    
+    # 任务中心
+    st.markdown("#### 🎯 今日任务")
+    tasks = [
+        {"name": "上传一个视频", "reward": "+10积分", "done": False},
+        {"name": "使用一次AI故事成片", "reward": "+20积分", "done": False},
+        {"name": "公益捐赠", "reward": "+5积分", "done": welfare > 0},
     ]
-    cols = st.columns(3)
-    for i, (name, key, status) in enumerate(tools):
-        with cols[i % 3]:
-            st.markdown(f"""
-            <div class="feature-card">
-                <div class="feature-icon">{name[0]}</div>
-                <div class="feature-name">{name}</div>
-                <div class="feature-desc">{'即将上线' if status == '开发中' else '体验一下'}</div>
-            </div>
-            """, unsafe_allow_html=True)
-            if st.button(f"使用 {name}", key=f"tool_{key}"):
-                if key == "teleprompter":
-                    render_teleprompter()
-                elif key == "meme":
-                    render_meme_factory()
-                else:
-                    st.info(f"{name}功能开发中，敬请期待！")
+    for task in tasks:
+        col1, col2, col3 = st.columns([3, 1, 1])
+        with col1:
+            st.markdown(f"**{task['name']}**")
+        with col2:
+            st.markdown(f"奖励: {task['reward']}")
+        with col3:
+            if task["done"]:
+                st.success("已完成")
+            else:
+                if st.button("去完成", key=f"task_{task['name']}"):
+                    st.info("功能开发中，敬请期待！")
+    st.markdown("---")
+    
+    # 原有 tabs
+    tab1, tab2, tab3, tab4 = st.tabs(["📦 我的作品", "❤️ 我的收藏", "🌍 公益", "⚙️ 设置"])
+    with tab1:
+        st.markdown("#### 🖼️ 我的版图")
+        render_my_posters()
+        st.markdown("#### 🖼️ 我的壁纸")
+        render_my_wallpapers()
+    with tab2:
+        st.markdown("#### 💎 我的收藏")
+        render_my_collections()
+    with tab3:
+        render_welfare()
+        st.markdown("---")
+        render_jackpot()
+    with tab4:
+        if st.button("消息中心"):
+            render_messages()
+        st.markdown("---")
+        render_language()
+        st.markdown("---")
+        if st.button("退出登录"):
+            st.session_state.clear()
+            st.rerun()
+
+# ========== 界面函数 ==========
+def render_auth():
+    with st.sidebar:
+        st.markdown("### 👤 用户中心")
+        if not st.session_state.get('logged_in', False):
+            tab = st.radio("", ["登录", "注册"], horizontal=True)
+            if tab == "登录":
+                username = st.text_input("用户名")
+                password = st.text_input("密码", type="password")
+                if st.button("登录"):
+                    ok, msg = login_user(username, password)
+                    if ok:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+            else:
+                username = st.text_input("用户名")
+                password = st.text_input("密码", type="password")
+                confirm = st.text_input("确认密码", type="password")
+                if st.button("注册"):
+                    if password != confirm:
+                        st.error("两次密码不一致")
+                    else:
+                        ok, msg = register_user(username, password)
+                        if ok:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+            st.stop()
+        else:
+            points = get_points(st.session_state.username)
+            st.success(f"欢迎，{st.session_state.username}")
+            st.markdown(f'<div class="points-badge">⭐ 积分：{points}</div>', unsafe_allow_html=True)
+            if st.button("退出登录"):
+                st.session_state.clear()
+                st.rerun()
+
+def render_language():
+    with st.sidebar:
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("中文"):
+                st.session_state.language = 'zh'
+                st.rerun()
+        with col2:
+            if st.button("English"):
+                st.session_state.language = 'en'
+                st.rerun()
 
 def render_teleprompter():
     st.markdown("### 🎤 提词拍摄")
@@ -1484,58 +1557,6 @@ def render_meme_factory():
             else:
                 st.warning("请输入文字")
 
-# ========== 界面函数 ==========
-def render_auth():
-    with st.sidebar:
-        st.markdown("### 👤 用户中心")
-        if not st.session_state.get('logged_in', False):
-            tab = st.radio("", ["登录", "注册"], horizontal=True)
-            if tab == "登录":
-                username = st.text_input("用户名")
-                password = st.text_input("密码", type="password")
-                if st.button("登录"):
-                    ok, msg = login_user(username, password)
-                    if ok:
-                        st.success(msg)
-                        st.rerun()
-                    else:
-                        st.error(msg)
-            else:
-                username = st.text_input("用户名")
-                password = st.text_input("密码", type="password")
-                confirm = st.text_input("确认密码", type="password")
-                if st.button("注册"):
-                    if password != confirm:
-                        st.error("两次密码不一致")
-                    else:
-                        ok, msg = register_user(username, password)
-                        if ok:
-                            st.success(msg)
-                            st.rerun()
-                        else:
-                            st.error(msg)
-            st.stop()
-        else:
-            points = get_points(st.session_state.username)
-            st.success(f"欢迎，{st.session_state.username}")
-            st.markdown(f'<div class="points-badge">⭐ 积分：{points}</div>', unsafe_allow_html=True)
-            if st.button("退出登录"):
-                st.session_state.clear()
-                st.rerun()
-
-def render_language():
-    with st.sidebar:
-        st.markdown("---")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("中文"):
-                st.session_state.language = 'zh'
-                st.rerun()
-        with col2:
-            if st.button("English"):
-                st.session_state.language = 'en'
-                st.rerun()
-
 # ========== 主程序 ==========
 def main():
     if 'language' not in st.session_state:
@@ -1543,13 +1564,16 @@ def main():
     if st.session_state.get('remember_me', False):
         if 'username' in st.session_state:
             st.session_state.logged_in = True
+    
     init_db()
     init_poster_tables()
     init_wallpaper_tables()
     init_welfare_tables()
     init_jackpot_tables()
+    
     render_language()
     render_auth()
+    
     if not st.session_state.get('logged_in', False):
         st.markdown("""
         <div class="main-header">
@@ -1560,85 +1584,30 @@ def main():
         """, unsafe_allow_html=True)
         st.info("👈 请先在左侧登录或注册")
         return
-    points = get_points(st.session_state.username)
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM posters WHERE creator = ?", (st.session_state.username,))
-    poster_count = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM wallpapers WHERE creator = ?", (st.session_state.username,))
-    wallpaper_count = c.fetchone()[0]
-    conn.close()
-    st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
-    st.markdown('<div class="stat-row">', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-item"><div class="stat-number">{points}</div><div class="stat-label">积分</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-item"><div class="stat-number">{poster_count + wallpaper_count}</div><div class="stat-label">作品数</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-item"><div class="stat-number">{poster_count}</div><div class="stat-label">版图</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="stat-item"><div class="stat-number">{wallpaper_count}</div><div class="stat-label">壁纸</div></div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-    if 'first_visit' not in st.session_state:
-        st.session_state.first_visit = True
-        st.info("🎉 欢迎来到小智！点击底部导航栏体验不同功能，试试「提词拍摄」和「表情包工厂」。说“剪掉前5秒”也能剪视频哦！")
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT title, price_points FROM posters ORDER BY created_at DESC LIMIT 3")
-    hot_posters = c.fetchall()
-    c.execute("SELECT title, price_points FROM wallpapers ORDER BY created_at DESC LIMIT 3")
-    hot_wallpapers = c.fetchall()
-    conn.close()
-    if hot_posters or hot_wallpapers:
-        st.markdown('<div class="stat-label" style="margin-bottom: 10px;">🔥 热门推荐</div>', unsafe_allow_html=True)
-        st.markdown('<div class="hot-grid">', unsafe_allow_html=True)
-        for p in hot_posters[:2]:
-            st.markdown(f'<div class="hot-item">🖼️ {p[0]}<br>{p[1]}积分</div>', unsafe_allow_html=True)
-        for w in hot_wallpapers[:2]:
-            st.markdown(f'<div class="hot-item">🎨 {w[0]}<br>{w[1]}积分</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # 底部导航栏
     if 'nav_index' not in st.session_state:
         st.session_state.nav_index = 0
-    nav_items = ["🎬 剪辑", "🤖 AI创作", "📦 仓库", "🌐 社区", "👤 我的"]
+    
+    nav_items = ["🎬 剪辑", "🤖 AI创作", "📦 素材", "🌐 社区", "👤 我的"]
     cols = st.columns(len(nav_items))
     for i, name in enumerate(nav_items):
         with cols[i]:
             if st.button(name, use_container_width=True):
                 st.session_state.nav_index = i
                 st.rerun()
+    
+    # 根据导航显示不同页面
     if st.session_state.nav_index == 0:
-        render_core_creation()
+        render_clip_page()
     elif st.session_state.nav_index == 1:
-        render_ai_assistant()
+        render_ai_creation_page()
     elif st.session_state.nav_index == 2:
-        render_asset_system()
+        render_material_page()
     elif st.session_state.nav_index == 3:
-        render_community()
+        render_community_page()
     else:
-        render_economy()
-        st.markdown("---")
-        if st.button("📬 消息中心"):
-            render_messages()
-        st.markdown("#### 📋 新手任务")
-        tasks = [
-            {"name": "上传视频", "done": poster_count > 0 or wallpaper_count > 0},
-            {"name": "生成第一个版图", "done": poster_count > 0},
-            {"name": "完成一次公益捐赠", "done": get_welfare_points(st.session_state.username) > 0},
-        ]
-        for task in tasks:
-            status_class = "done" if task["done"] else "pending"
-            status_text = "已完成" if task["done"] else "未完成"
-            st.markdown(f"""
-            <div class="task-item">
-                <span class="task-name">{task['name']}</span>
-                <span class="task-status {status_class}">{status_text}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        if not tasks[0]["done"]:
-            st.info("💡 去「剪辑」上传一个视频试试！")
-        elif not tasks[1]["done"]:
-            st.info("💡 上传视频后，去「仓库」生成版图吧！")
-        elif not tasks[2]["done"]:
-            st.info("💡 去「我的」做一次公益捐赠，获得勋章！")
-        else:
-            st.balloons()
-            st.success("🎉 恭喜你完成所有新手任务！")
+        render_my_page()
 
 if __name__ == "__main__":
     main()
