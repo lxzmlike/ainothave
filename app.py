@@ -1,6 +1,6 @@
 """
-小智 - 智能视频助手 v8.9
-新增：AI 助手自然语言理解 + 智能推荐 + 真实视频合成 + 图文成片
+小智 - 智能视频助手 v9.0
+整合：AI剪视频、图文成片增强、社区互动、素材库扩充
 """
 
 import streamlit as st
@@ -17,12 +17,13 @@ import random
 import re
 import cv2
 import requests
-import jieba
+import jieba.analyse
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
 from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip
 from gtts import gTTS
 
+# ========== 页面配置 ==========
 st.set_page_config(page_title="小智 - 智能视频助手", page_icon="🤖", layout="wide")
 
 # ========== PWA支持 ==========
@@ -293,7 +294,7 @@ def speed_video(input_path, speed, output_path):
 def video_to_gif(input_path, output_path, start=0, duration=5):
     subprocess.run(["ffmpeg", "-i", input_path, "-ss", str(start), "-t", str(duration), "-vf", "fps=10,scale=320:-1", output_path])
 
-# ========== 数据库 ==========
+# ========== 数据库初始化 ==========
 def init_db():
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
@@ -420,6 +421,112 @@ def init_jackpot_tables():
     conn.commit()
     conn.close()
 
+def init_community_tables():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user TEXT,
+        type TEXT,
+        content TEXT,
+        media_path TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        likes INTEGER DEFAULT 0,
+        comments INTEGER DEFAULT 0
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS likes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user TEXT,
+        post_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user, post_id)
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user TEXT,
+        post_id INTEGER,
+        content TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    conn.commit()
+    conn.close()
+
+def init_material_tables():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS video_materials (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        tags TEXT,
+        url TEXT,
+        duration INTEGER,
+        thumbnail TEXT,
+        source TEXT,
+        uploader TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS music_materials (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        tags TEXT,
+        url TEXT,
+        artist TEXT,
+        duration INTEGER,
+        source TEXT,
+        uploader TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    conn.commit()
+    conn.close()
+
+def load_sample_materials():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM video_materials")
+    if c.fetchone()[0] == 0:
+        videos = [
+            ("夏日海滩", "夏天,海边,自然", "https://www.pexels.com/video/beach-waves-127123/", 10, "", "Pexels", "system"),
+            ("城市夜景", "城市,夜景,科技", "https://www.pexels.com/video/city-night-traffic-156028/", 12, "", "Pexels", "system"),
+            ("美食特写", "美食,特写", "https://www.pexels.com/video/delicious-food-155670/", 8, "", "Pexels", "system"),
+            ("萌宠猫咪", "宠物,猫", "https://www.pexels.com/video/cat-156028/", 6, "", "Pexels", "system"),
+            ("旅行风光", "旅行,风景", "https://www.pexels.com/video/mountains-156028/", 15, "", "Pexels", "system"),
+            ("科技未来", "科技,未来", "https://www.pexels.com/video/ai-156028/", 8, "", "Pexels", "system"),
+            ("春日樱花", "春天,浪漫", "https://www.pexels.com/video/sakura-156028/", 7, "", "Pexels", "system"),
+            ("雪山风景", "冬天,自然", "https://www.pexels.com/video/snow-mountain-156028/", 12, "", "Pexels", "system"),
+            ("街拍时尚", "城市,潮流", "https://www.pexels.com/video/street-fashion-156028/", 9, "", "Pexels", "system"),
+            ("运动活力", "运动,活力", "https://www.pexels.com/video/running-156028/", 10, "", "Pexels", "system"),
+        ]
+        for v in videos:
+            c.execute("INSERT INTO video_materials (name, tags, url, duration, thumbnail, source, uploader) VALUES (?, ?, ?, ?, ?, ?, ?)", v)
+    c.execute("SELECT COUNT(*) FROM music_materials")
+    if c.fetchone()[0] == 0:
+        musics = [
+            ("轻快吉他", "轻快,吉他", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", "SoundHelix", 0, "SoundHelix", "system"),
+            ("舒缓钢琴", "舒缓,钢琴", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3", "SoundHelix", 0, "SoundHelix", "system"),
+            ("动感节奏", "动感,电子", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3", "SoundHelix", 0, "SoundHelix", "system"),
+            ("治愈系", "治愈,纯音乐", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3", "SoundHelix", 0, "SoundHelix", "system"),
+            ("史诗感", "史诗,宏大", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3", "SoundHelix", 0, "SoundHelix", "system"),
+        ]
+        for m in musics:
+            c.execute("INSERT INTO music_materials (name, tags, url, artist, duration, source, uploader) VALUES (?, ?, ?, ?, ?, ?, ?)", m)
+    conn.commit()
+    conn.close()
+
+def init_user_actions_table():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS user_actions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        action_type TEXT,
+        target_type TEXT,
+        target_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    conn.commit()
+    conn.close()
+
+# 用户认证相关
 def hash_password(password, salt=None):
     if salt is None:
         salt = secrets.token_hex(16)
@@ -433,17 +540,12 @@ def login_user(username, password):
     row = c.fetchone()
     conn.close()
     if not row:
-        return False, "用户不存在"
+        return False, "用户不存在", None, None
     stored_hash, salt, points, admin_level = row
     input_hash, _ = hash_password(password, salt)
     if input_hash == stored_hash:
-        st.session_state.logged_in = True
-        st.session_state.username = username
-        st.session_state.points = points
-        st.session_state.admin_level = admin_level
-        st.session_state.remember_me = True
-        return True, "登录成功"
-    return False, "密码错误"
+        return True, "登录成功", points, admin_level
+    return False, "密码错误", None, None
 
 def register_user(username, password):
     conn = sqlite3.connect('users.db')
@@ -502,7 +604,6 @@ def add_points(username, amount, reason):
     conn.close()
     return True
 
-# ========== 消息中心 ==========
 def get_notifications(username):
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
@@ -519,6 +620,858 @@ def get_notifications(username):
         system.append(("🎖️ 感谢您的公益捐赠！获得爱心勋章", datetime.now().strftime("%Y-%m-%d %H:%M")))
     conn.close()
     return interact, system
+
+def get_welfare_points(username):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT total_donated FROM welfare_points WHERE user = ?", (username,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+def add_welfare_points(username, points, project_id):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO welfare_points (user, total_donated) VALUES (?, 0)", (username,))
+    c.execute("UPDATE welfare_points SET total_donated = total_donated + ? WHERE user = ?", (points, username))
+    c.execute("INSERT INTO welfare_donations (user, project_id, points) VALUES (?, ?, ?)", (username, project_id, points))
+    conn.commit()
+    conn.close()
+
+def get_current_jackpot():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    current_month = time.strftime("%Y-%m")
+    c.execute("SELECT total_points FROM jackpot WHERE month = ?", (current_month,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+def get_user_preferences(username):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("""
+        SELECT p.title 
+        FROM poster_collections pc 
+        JOIN posters p ON pc.poster_id = p.id 
+        WHERE pc.user = ? 
+        ORDER BY pc.bought_at DESC LIMIT 5
+    """, (username,))
+    bought_titles = [row[0] for row in c.fetchall()]
+    conn.close()
+    
+    video_path = st.session_state.get('video_path', '')
+    video_name = os.path.basename(video_path) if video_path else ''
+    
+    keywords = []
+    all_text = " ".join(bought_titles) + " " + video_name
+    keyword_map = {
+        "夏天": ["夏天", "夏日", "summer"],
+        "海边": ["海边", "沙滩", "海", "beach"],
+        "旅行": ["旅行", "旅游", "trip"],
+        "美食": ["美食", "food"],
+        "宠物": ["宠物", "猫", "狗", "pet"],
+        "科技": ["科技", "tech"],
+        "夜景": ["夜景", "night"],
+        "城市": ["城市", "city"],
+    }
+    for tag, words in keyword_map.items():
+        if any(w in all_text.lower() for w in words):
+            keywords.append(tag)
+    if not keywords:
+        keywords = ["创意", "热门"]
+    return keywords
+
+def record_action(username, action_type, target_type, target_id):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO user_actions (username, action_type, target_type, target_id) VALUES (?, ?, ?, ?)",
+              (username, action_type, target_type, target_id))
+    conn.commit()
+    conn.close()# ========== 智能剪辑分析函数 ==========
+def detect_scene_changes(video_path, threshold=30.0):
+    cap = cv2.VideoCapture(video_path)
+    prev_frame = None
+    changes = []
+    frame_count = 0
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        if prev_frame is not None:
+            diff = cv2.absdiff(prev_frame, gray)
+            mean_diff = np.mean(diff)
+            if mean_diff > threshold:
+                changes.append(frame_count / fps)
+        prev_frame = gray
+        frame_count += 1
+    cap.release()
+    return changes
+
+def detect_motion(video_path, motion_threshold=30):
+    cap = cv2.VideoCapture(video_path)
+    prev_frame = None
+    motion_times = []
+    frame_count = 0
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        if prev_frame is not None:
+            diff = cv2.absdiff(prev_frame, gray)
+            mean_diff = np.mean(diff)
+            if mean_diff > motion_threshold:
+                motion_times.append(frame_count / fps)
+        prev_frame = gray
+        frame_count += 1
+    cap.release()
+    return motion_times
+
+def detect_faces(video_path, cascade_path=cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'):
+    face_cascade = cv2.CascadeClassifier(cascade_path)
+    cap = cv2.VideoCapture(video_path)
+    face_times = []
+    frame_count = 0
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30,30))
+        if len(faces) > 0:
+            face_times.append(frame_count / fps)
+        frame_count += 1
+    cap.release()
+    return face_times
+
+def get_highlight_segments(video_path, duration=5, num_segments=3):
+    scene_changes = detect_scene_changes(video_path)
+    motion = detect_motion(video_path)
+    faces = detect_faces(video_path)
+    score_dict = {}
+    for t in scene_changes:
+        score_dict[t] = score_dict.get(t, 0) + 2
+    for t in motion:
+        score_dict[t] = score_dict.get(t, 0) + 1
+    for t in faces:
+        score_dict[t] = score_dict.get(t, 0) + 3
+    sorted_points = sorted(score_dict.items(), key=lambda x: x[1], reverse=True)
+    segments = []
+    for t, score in sorted_points:
+        if score >= 2:
+            start = max(0, t - duration/2)
+            end = start + duration
+            if not segments or all(abs(start - s[0]) > duration and abs(end - s[1]) > duration for s in segments):
+                segments.append((start, end))
+            if len(segments) >= num_segments:
+                break
+    return segments
+
+def merge_segments(video_path, segments, output_path):
+    clips = []
+    for start, end in segments:
+        clip = VideoFileClip(video_path).subclip(start, end)
+        clips.append(clip)
+    final = concatenate_videoclips(clips, method="compose")
+    final.write_videofile(output_path, codec='libx264', audio_codec='aac')
+    for clip in clips:
+        clip.close()
+    final.close()
+
+# ========== 图文成片增强函数 ==========
+STOPWORDS = set(['的', '了', '是', '在', '和', '与', '或', '等', '也', '就', '都', '而', '及', '以及', '不仅', '而且', '因为', '所以', '但是', '如果', '虽然', '然而', '并且', '或者', '因此', '于是'])
+
+def extract_keywords_weighted(title, content, topk=5):
+    text = title + " " + title + " " + content
+    keywords = jieba.analyse.extract_tags(text, topK=topk, withWeight=True)
+    keywords = [(word, weight) for word, weight in keywords if word not in STOPWORDS]
+    return keywords
+
+def score_material(material, keywords):
+    score = 0
+    for word, weight in keywords:
+        if word in material["tags"]:
+            score += weight
+    return score
+
+def match_materials_by_keywords(keywords, materials, top_n=3):
+    scored = [(score_material(m, keywords), m) for m in materials]
+    scored.sort(reverse=True, key=lambda x: x[0])
+    matched = [m for score, m in scored if score > 0]
+    if len(matched) < top_n:
+        default = [m for m in materials if m not in matched]
+        matched.extend(default[:top_n - len(matched)])
+    return matched[:top_n]
+
+CACHE_DIR = "cached_videos"
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+def download_video(url, save_path):
+    r = requests.get(url, stream=True)
+    with open(save_path, 'wb') as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            f.write(chunk)
+    return save_path
+
+def get_cached_video(url):
+    filename = hashlib.md5(url.encode()).hexdigest() + ".mp4"
+    cache_path = os.path.join(CACHE_DIR, filename)
+    if not os.path.exists(cache_path):
+        download_video(url, cache_path)
+    return cache_path
+
+def text_to_audio_advanced(text, output_path, speed=1.0, voice_id=None):
+    # 使用 gTTS 简单实现（语速暂不支持调节）
+    tts = gTTS(text=text, lang='zh-cn', slow=False)
+    tts.save(output_path)
+
+def synthesize_video_advanced(video_paths, audio_path, output_path, clip_duration=5, use_transition=True):
+    from moviepy.video.fx import crossfadein
+    clips = []
+    for path in video_paths:
+        clip = VideoFileClip(path)
+        duration = min(clip_duration, clip.duration)
+        sub = clip.subclip(0, duration)
+        clips.append(sub)
+    if use_transition and len(clips) > 1:
+        final = clips[0]
+        for clip in clips[1:]:
+            final = concatenate_videoclips([final, clip.crossfadein(1)], method="compose")
+    else:
+        final = concatenate_videoclips(clips, method="compose")
+    audio = AudioFileClip(audio_path)
+    final = final.set_audio(audio)
+    final.write_videofile(output_path, codec='libx264', audio_codec='aac')
+    for clip in clips:
+        clip.close()
+    audio.close()
+    final.close()
+
+def generate_video_from_text_enhanced(title, content, materials, speed=1.0, voice_id=None, clip_duration=5, use_transition=True):
+    video_paths = [get_cached_video(m['url']) for m in materials]
+    audio_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
+    full_text = title + " " + content
+    text_to_audio_advanced(full_text, audio_file, speed=speed, voice_id=voice_id)
+    output_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+    synthesize_video_advanced(video_paths, audio_file, output_file,
+                              clip_duration=clip_duration, use_transition=use_transition)
+    return output_file
+
+# ========== 从数据库获取素材 ==========
+def get_video_materials():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT id, name, tags, url, thumbnail FROM video_materials ORDER BY id")
+    rows = c.fetchall()
+    conn.close()
+    return [{"id": r[0], "name": r[1], "tags": r[2].split(','), "url": r[3], "thumbnail": r[4]} for r in rows]
+
+def get_music_materials():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT id, name, tags, url FROM music_materials ORDER BY id")
+    rows = c.fetchall()
+    conn.close()
+    return [{"id": r[0], "name": r[1], "tags": r[2].split(','), "url": r[3]} for r in rows]# ========== 剪辑页面 ==========
+def render_clip_page():
+    # 模板中心
+    st.markdown("#### 🎨 热门模板")
+    templates = [
+        {"name": "春日回忆", "image": "https://picsum.photos/300/200?random=1", "desc": "春天主题，温暖治愈"},
+        {"name": "旅行Vlog", "image": "https://picsum.photos/300/200?random=2", "desc": "旅行风景，自由轻松"},
+        {"name": "美食诱惑", "image": "https://picsum.photos/300/200?random=3", "desc": "美食特写，诱人口感"},
+    ]
+    cols = st.columns(3)
+    for i, tpl in enumerate(templates):
+        with cols[i]:
+            st.image(tpl["image"], use_column_width=True)
+            st.caption(f"**{tpl['name']}**\n{tpl['desc']}")
+            if st.button(f"使用模板", key=f"tpl_{i}"):
+                st.info(f"模板 {tpl['name']} 已添加到待编辑列表（功能开发中）")
+    st.markdown("---")
+    
+    st.markdown("### 🎬 开始创作")
+    uploaded = st.file_uploader("", type=["mp4", "mov", "avi"], label_visibility="collapsed", key="clip_upload")
+    if uploaded:
+        video_path = save_uploaded_file(uploaded)
+        st.session_state.video_path = video_path
+        st.video(video_path)
+        st.success("✅ 上传成功！")
+        
+        st.markdown("#### ✂️ 剪辑工具")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            if st.button("剪切视频", use_container_width=True):
+                if st.session_state.get('video_path'):
+                    dur = get_video_info(st.session_state.video_path)["duration"]
+                    with st.expander("设置剪切时间", expanded=True):
+                        start = st.number_input("开始(秒)", 0.0, dur, 0.0)
+                        end = st.number_input("结束(秒)", 0.0, dur, min(5.0, dur))
+                        if st.button("确认剪切"):
+                            out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+                            cut_video(st.session_state.video_path, start, end, out)
+                            with open(out, "rb") as f:
+                                st.download_button("下载", f, file_name="cut.mp4")
+                else:
+                    st.warning("请先上传视频")
+        with col2:
+            if st.button("视频变速", use_container_width=True):
+                if st.session_state.get('video_path'):
+                    with st.expander("选择速度", expanded=True):
+                        def apply_speed(s):
+                            out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+                            speed_video(st.session_state.video_path, s, out)
+                            with open(out, "rb") as f:
+                                st.download_button("下载", f, file_name=f"speed_{s}x.mp4")
+                        cols_s = st.columns(4)
+                        with cols_s[0]:
+                            if st.button("0.5x"): apply_speed(0.5)
+                        with cols_s[1]:
+                            if st.button("1.0x"): apply_speed(1.0)
+                        with cols_s[2]:
+                            if st.button("1.5x"): apply_speed(1.5)
+                        with cols_s[3]:
+                            if st.button("2.0x"): apply_speed(2.0)
+                        speed = st.number_input("自定义倍数", 0.5, 2.0, 1.0, step=0.1)
+                        if st.button("应用自定义"):
+                            apply_speed(speed)
+                else:
+                    st.warning("请先上传视频")
+        with col3:
+            if st.button("导出GIF", use_container_width=True):
+                if st.session_state.get('video_path'):
+                    with st.expander("设置GIF参数", expanded=True):
+                        start = st.number_input("开始时间(秒)", 0.0, 10.0, 0.0)
+                        duration = st.number_input("时长(秒)", 1.0, 10.0, 3.0)
+                        if st.button("确认导出"):
+                            out = tempfile.NamedTemporaryFile(suffix=".gif", delete=False).name
+                            video_to_gif(st.session_state.video_path, out, start, duration)
+                            with open(out, "rb") as f:
+                                st.download_button("下载", f, file_name="output.gif")
+                else:
+                    st.info("请先上传视频")
+        with col4:
+            if st.button("美颜滤镜", use_container_width=True):
+                st.info("美颜滤镜开发中，敬请期待")
+        
+        # ========== 智能剪辑 ==========
+        st.markdown("#### 🧠 智能剪辑")
+        if st.button("🔍 分析精彩片段", use_container_width=True):
+            with st.spinner("正在分析视频，请稍候..."):
+                segments = get_highlight_segments(video_path, duration=3, num_segments=3)
+                st.session_state.highlight_segments = segments
+            st.success("分析完成！")
+        
+        if 'highlight_segments' in st.session_state and st.session_state.highlight_segments:
+            st.markdown("##### ✨ 推荐精彩片段")
+            selected = []
+            for i, (start, end) in enumerate(st.session_state.highlight_segments):
+                col1, col2, col3 = st.columns([3, 1, 1])
+                with col1:
+                    st.write(f"片段 {i+1}: {start:.1f}s - {end:.1f}s")
+                with col2:
+                    if st.button(f"单独下载", key=f"dl_{i}"):
+                        out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+                        cut_video(video_path, start, end, out)
+                        with open(out, "rb") as f:
+                            st.download_button("下载片段", f, file_name=f"highlight_{i+1}.mp4", key=f"dl_btn_{i}")
+                with col3:
+                    if st.checkbox("选中", key=f"select_{i}"):
+                        selected.append((start, end))
+            if selected:
+                if st.button("🎬 合成选中片段", use_container_width=True):
+                    out_path = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+                    with st.spinner("正在合成视频..."):
+                        merge_segments(video_path, selected, out_path)
+                    st.success("合成完成！")
+                    with open(out_path, "rb") as f:
+                        st.download_button("下载合成视频", f, file_name="merged.mp4", mime="video/mp4")
+    else:
+        st.markdown("""
+        <div style="text-align:center; padding: 50px; border: 2px dashed #ccc; border-radius: 20px;">
+            <div style="font-size: 48px;">📤</div>
+            <p>点击或拖拽视频开始创作</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("#### 🔥 热门工具")
+    hot_tools = [
+        ("🎬 AI故事成片", "ai_story"),
+        ("📝 图文成片", "text2video"),
+        ("✂️ AI剪视频", "ai_cut"),
+        ("🎤 智能提词", "teleprompter"),
+    ]
+    cols = st.columns(2)
+    for i, (name, key) in enumerate(hot_tools):
+        with cols[i % 2]:
+            if st.button(name, use_container_width=True):
+                st.session_state.nav_index = 1
+                st.session_state.current_ai_tool = key
+                st.rerun()
+
+# ========== AI创作页面 ==========
+def render_ai_creation_page():
+    st.markdown("### 🤖 AI创作工具箱")
+    
+    # 今日推荐工具
+    st.markdown("#### 🌟 今日推荐")
+    with st.container():
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            st.markdown("<div style='font-size: 48px;'>🎬</div>", unsafe_allow_html=True)
+        with col2:
+            st.markdown("**AI故事成片**\n只需输入故事梗概，AI自动生成分镜脚本并匹配素材，一键合成视频。")
+            if st.button("立即体验", key="today_tool"):
+                st.session_state.current_ai_tool = "story_to_video"
+                st.rerun()
+    st.markdown("---")
+    
+    tools = [
+        {"icon": "🎬", "name": "AI故事成片", "desc": "输入故事，生成分镜脚本和视频", "func": "story_to_video"},
+        {"icon": "📝", "name": "图文成片", "desc": "输入文字，自动生成视频", "func": "text_to_video"},
+        {"icon": "✂️", "name": "AI剪视频", "desc": "智能分析视频，推荐剪辑点", "func": "ai_cut"},
+        {"icon": "🎬", "name": "AI视频生成", "desc": "文本描述生成视频", "func": "text_to_video_advanced"},
+        {"icon": "🎤", "name": "智能提词拍摄", "desc": "提词器+AI台词生成", "func": "teleprompter"},
+        {"icon": "🎭", "name": "表情包工厂", "desc": "从视频制作GIF表情", "func": "meme_factory"},
+        {"icon": "🎵", "name": "变声器", "desc": "改变音频音色", "func": "voice_changer"},
+        {"icon": "🏆", "name": "每日挑战", "desc": "完成创作任务赢积分", "func": "daily_challenge"},
+    ]
+    cols = st.columns(2)
+    for i, tool in enumerate(tools):
+        with cols[i % 2]:
+            with st.container():
+                st.markdown(f"""
+                <div style="background: white; border-radius: 16px; padding: 15px; margin-bottom: 15px;">
+                    <div style="font-size: 32px;">{tool['icon']}</div>
+                    <div><strong>{tool['name']}</strong></div>
+                    <div style="color: gray; font-size: 12px;">{tool['desc']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button(f"使用 {tool['name']}", key=tool['func'], use_container_width=True):
+                    st.session_state.current_ai_tool = tool['func']
+                    st.rerun()
+    
+    if 'current_ai_tool' in st.session_state:
+        tool = st.session_state.current_ai_tool
+        st.markdown("---")
+        tool_names = {t['func']: t['name'] for t in tools}
+        st.markdown(f"### {tool_names[tool]}")
+        
+        if tool == "story_to_video":
+            # 故事成片（已有）
+            story_prompt = st.text_area("输入故事梗概", height=100, placeholder="例如：一个宇航员在火星上发现了一朵花")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("生成分镜脚本", use_container_width=True):
+                    if story_prompt:
+                        with st.spinner("正在生成分镜..."):
+                            script = f"""
+                            镜头1：{story_prompt[:20]}... 引入场景（5秒）
+                            镜头2：细节特写，展示关键元素（8秒）
+                            镜头3：情感爆发或转折（5秒）
+                            镜头4：结局，留下想象空间（4秒）
+                            """
+                            st.success("分镜脚本已生成")
+                            st.text(script)
+                    else:
+                        st.warning("请输入故事梗概")
+            with col2:
+                if st.button("一键成片", use_container_width=True):
+                    if story_prompt:
+                        with st.spinner("正在从素材库选取片段..."):
+                            # 这里需要 get_materials_for_story 函数，简单复用之前的
+                            # 临时定义
+                            def get_materials_for_story(txt):
+                                # 简单匹配
+                                for m in get_video_materials():
+                                    for tag in m["tags"]:
+                                        if tag in txt:
+                                            return [m]
+                                return get_video_materials()[:2]
+                            materials = get_materials_for_story(story_prompt)
+                            if materials:
+                                st.info(f"✅ 已匹配到 {len(materials)} 个相关素材：{', '.join([m['name'] for m in materials])}")
+                                progress_bar = st.progress(0)
+                                def update_progress(p):
+                                    progress_bar.progress(int(p * 100))
+                                output_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+                                try:
+                                    # 使用已有合成函数
+                                    video_paths = [get_cached_video(m['url']) for m in materials]
+                                    audio_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
+                                    # 临时生成一个静音音频，实际可配音
+                                    from moviepy.audio.io.AudioFileClip import AudioFileClip
+                                    silent_audio = AudioFileClip(audio_file)  # 占位
+                                    synthesize_video_advanced(video_paths, audio_file, output_file, clip_duration=3, use_transition=True)
+                                    st.success("视频合成完成！点击下载")
+                                    with open(output_file, "rb") as f:
+                                        st.download_button("下载视频", f, file_name="story_video.mp4", mime="video/mp4")
+                                except Exception as e:
+                                    st.error(f"合成失败：{e}")
+                                progress_bar.empty()
+                            else:
+                                st.warning("未能匹配到素材")
+                    else:
+                        st.warning("请输入故事梗概")
+        
+        elif tool == "text_to_video":
+            # 图文成片（增强版）
+            st.markdown("#### 图文成片")
+            title = st.text_input("标题", placeholder="请输入视频标题")
+            content = st.text_area("正文", height=150, placeholder="输入你想表达的内容...")
+            
+            with st.expander("高级选项"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    speed = st.slider("语速", 0.5, 2.0, 1.0, step=0.1)
+                    clip_duration = st.slider("每段素材时长(秒)", 2, 10, 5)
+                with col2:
+                    use_transition = st.checkbox("添加转场效果", value=True)
+                    voice_id = st.selectbox("音色", ["默认", "女性", "男性"])
+            
+            if st.button("生成视频", use_container_width=True):
+                if title and content:
+                    with st.spinner("正在生成视频，请稍候..."):
+                        try:
+                            keywords = extract_keywords_weighted(title, content)
+                            all_materials = get_video_materials()
+                            matched_materials = match_materials_by_keywords(keywords, all_materials)
+                            if not matched_materials:
+                                matched_materials = all_materials[:2]
+                            output_file = generate_video_from_text_enhanced(
+                                title, content, matched_materials,
+                                speed=speed,
+                                voice_id=voice_id if voice_id != "默认" else None,
+                                clip_duration=clip_duration,
+                                use_transition=use_transition
+                            )
+                            st.success("视频生成完成！点击下载")
+                            with open(output_file, "rb") as f:
+                                st.download_button("下载视频", f, file_name="text2video.mp4", mime="video/mp4")
+                        except Exception as e:
+                            st.error(f"生成失败：{e}")
+                else:
+                    st.warning("请填写标题和正文")
+        
+        elif tool == "ai_cut":
+            st.info("AI剪视频功能请在剪辑页使用。")
+        elif tool == "text_to_video_advanced":
+            st.info("AI视频生成功能开发中，敬请期待！")
+        elif tool == "teleprompter":
+            render_teleprompter()
+        elif tool == "meme_factory":
+            render_meme_factory()
+        elif tool == "voice_changer":
+            st.info("变声器功能开发中，敬请期待！")
+        elif tool == "daily_challenge":
+            st.info("每日挑战功能开发中，敬请期待！")
+        
+        if st.button("← 返回工具箱", use_container_width=True):
+            del st.session_state.current_ai_tool
+            st.rerun()
+
+# ========== 素材页面 ==========
+def render_material_page():
+    st.markdown("### 📦 素材库")
+    
+    # 智能推荐
+    st.markdown("#### 🧠 为你推荐")
+    preferences = get_user_preferences(st.session_state.username)
+    all_videos = get_video_materials()
+    recommended = []
+    for m in all_videos:
+        score = sum(1 for tag in m["tags"] if tag in preferences)
+        if score > 0:
+            recommended.append((score, m))
+    recommended.sort(reverse=True, key=lambda x: x[0])
+    recommended = [m for score, m in recommended][:3]
+    if not recommended:
+        recommended = all_videos[:2]
+    cols = st.columns(len(recommended))
+    for i, m in enumerate(recommended):
+        with cols[i]:
+            st.video(m["url"], format="video/mp4", start_time=0)
+            st.caption(f"**{m['name']}**  /  {' '.join(['#'+t for t in m['tags']])}")
+            if st.button(f"应用", key=f"rec_{i}"):
+                st.info(f"已将 {m['name']} 添加到待编辑列表")
+    
+    st.markdown("---")
+    
+    tab1, tab2, tab3, tab4 = st.tabs(["🎬 视频素材", "🎵 背景音乐", "📝 文字模板", "🎨 数字资产"])
+    
+    with tab1:
+        videos = get_video_materials()
+        if not videos:
+            st.info("暂无视频素材")
+        else:
+            cols = st.columns(3)
+            for i, m in enumerate(videos):
+                with cols[i % 3]:
+                    st.video(m["url"], format="video/mp4", start_time=0)
+                    st.caption(f"**{m['name']}**  /  {' '.join(['#'+t for t in m['tags']])}")
+                    if st.button(f"应用", key=f"video_{i}"):
+                        st.info(f"已将 {m['name']} 添加到待编辑列表")
+    
+    with tab2:
+        musics = get_music_materials()
+        if not musics:
+            st.info("暂无音乐素材")
+        else:
+            cols = st.columns(3)
+            for i, m in enumerate(musics):
+                with cols[i % 3]:
+                    st.audio(m["url"], format="audio/mp3")
+                    st.caption(f"**{m['name']}**")
+                    if st.button(f"应用", key=f"music_{i}"):
+                        st.info(f"已将 {m['name']} 添加到配乐列表")
+    
+    with tab3:
+        # 文字模板（暂时保留原有）
+        TEXT_TEMPLATES = [
+            {"name": "夏日文案", "text": "夏天的风，吹过海面", "tags": ["夏天"]},
+            {"name": "旅行标语", "text": "在路上，遇见自己", "tags": ["旅行"]},
+            {"name": "美食语录", "text": "唯有美食与爱不可辜负", "tags": ["美食"]},
+            {"name": "春日寄语", "text": "春风十里，不如你", "tags": ["春天"]},
+            {"name": "励志金句", "text": "努力是奇迹的另一个名字", "tags": ["励志"]},
+        ]
+        cols = st.columns(3)
+        for i, tpl in enumerate(TEXT_TEMPLATES):
+            with cols[i % 3]:
+                st.markdown(f"<div style='background:#f5f5f5; padding:10px; border-radius:10px;'>{tpl['text']}</div>", unsafe_allow_html=True)
+                st.caption(f"**{tpl['name']}**")
+                if st.button(f"复制", key=f"text_{i}"):
+                    st.info(f"已复制到剪贴板")
+    
+    with tab4:
+        st.markdown("#### 版图系统")
+        if st.button("进入版图系统", use_container_width=True):
+            with st.expander("版图系统", expanded=True):
+                poster_tabs = st.tabs(["✨ 生成版图", "🛒 版图商城", "🖼️ 我的版图", "💎 我的收藏", "📊 版图统计"])
+                with poster_tabs[0]:
+                    render_poster_generator()
+                with poster_tabs[1]:
+                    render_poster_mall()
+                with poster_tabs[2]:
+                    render_my_posters()
+                with poster_tabs[3]:
+                    render_my_collections()
+                with poster_tabs[4]:
+                    render_poster_stats()
+        st.markdown("#### 壁纸系统")
+        if st.button("进入壁纸系统", use_container_width=True):
+            with st.expander("壁纸系统", expanded=True):
+                wallpaper_tabs = st.tabs(["🎨 创作壁纸", "🛒 壁纸商城", "🖼️ 我的壁纸", "📊 壁纸统计"])
+                with wallpaper_tabs[0]:
+                    render_wallpaper_generator()
+                with wallpaper_tabs[1]:
+                    render_wallpaper_mall()
+                with wallpaper_tabs[2]:
+                    render_my_wallpapers()
+                with wallpaper_tabs[3]:
+                    render_wallpaper_stats()
+
+# ========== 社区页面 ==========
+def render_community_page():
+    st.markdown("### 🌐 灵感社区")
+    
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT id, user, type, content, media_path, created_at, likes, comments FROM posts ORDER BY created_at DESC")
+    posts = c.fetchall()
+    conn.close()
+    
+    if not posts:
+        st.info("暂无作品，快去发布你的第一个作品吧！")
+        return
+    
+    for post in posts:
+        post_id, user, p_type, content, media_path, created_at, likes, comments = post
+        with st.container():
+            st.markdown(f"**{user}** 发布于 {created_at[:16]}")
+            st.markdown(f"**{content}**")
+            if media_path and os.path.exists(media_path):
+                if p_type in ["poster", "wallpaper"]:
+                    st.image(media_path, use_column_width=True)
+                else:
+                    st.video(media_path)
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button(f"❤️ {likes}", key=f"like_{post_id}"):
+                    conn2 = sqlite3.connect('users.db')
+                    c2 = conn2.cursor()
+                    c2.execute("SELECT * FROM likes WHERE user=? AND post_id=?", (st.session_state.username, post_id))
+                    if not c2.fetchone():
+                        c2.execute("INSERT INTO likes (user, post_id) VALUES (?, ?)", (st.session_state.username, post_id))
+                        c2.execute("UPDATE posts SET likes = likes + 1 WHERE id=?", (post_id,))
+                        c2.execute("SELECT user FROM posts WHERE id=?", (post_id,))
+                        author = c2.fetchone()[0]
+                        if author != st.session_state.username:
+                            add_points(author, 1, "作品被点赞")
+                        st.rerun()
+                    conn2.commit()
+                    conn2.close()
+            with col2:
+                if st.button(f"💬 {comments}", key=f"comment_{post_id}"):
+                    with st.expander("添加评论"):
+                        comment_text = st.text_input("评论内容", key=f"comment_input_{post_id}")
+                        if st.button("提交评论", key=f"submit_{post_id}"):
+                            if comment_text:
+                                conn3 = sqlite3.connect('users.db')
+                                c3 = conn3.cursor()
+                                c3.execute("INSERT INTO comments (user, post_id, content) VALUES (?, ?, ?)",
+                                          (st.session_state.username, post_id, comment_text))
+                                c3.execute("UPDATE posts SET comments = comments + 1 WHERE id=?", (post_id,))
+                                conn3.commit()
+                                conn3.close()
+                                st.rerun()
+            if comments > 0:
+                with st.expander(f"查看 {comments} 条评论"):
+                    conn4 = sqlite3.connect('users.db')
+                    c4 = conn4.cursor()
+                    c4.execute("SELECT user, content, created_at FROM comments WHERE post_id=? ORDER BY created_at DESC", (post_id,))
+                    comments_list = c4.fetchall()
+                    for cu, cc, ct in comments_list:
+                        st.markdown(f"**{cu}** {ct[:16]}\n{cc}")
+                    conn4.close()
+            st.markdown("---")
+
+# ========== 我的页面 ==========
+def render_my_page():
+    st.markdown("### 👤 我的")
+    
+    points = get_points(st.session_state.username)
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM posters WHERE creator = ?", (st.session_state.username,))
+    poster_count = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM wallpapers WHERE creator = ?", (st.session_state.username,))
+    wallpaper_count = c.fetchone()[0]
+    conn.close()
+    welfare = get_welfare_points(st.session_state.username)
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("积分", points)
+    with col2:
+        st.metric("作品", poster_count + wallpaper_count)
+    with col3:
+        st.metric("公益", welfare)
+    
+    # 创作日历（模拟）
+    st.markdown("#### 📅 创作日历")
+    days = ["一", "二", "三", "四", "五", "六", "日"]
+    import random
+    active = [random.choice([0,1,1,1,2,2]) for _ in range(7)]
+    cols = st.columns(7)
+    for i, (day, act) in enumerate(zip(days, active)):
+        with cols[i]:
+            color = "#4caf50" if act >= 2 else "#ff9800" if act == 1 else "#ddd"
+            st.markdown(f"<div style='text-align:center; background:{color}; border-radius:8px; padding:5px;'>{day}<br>{'🔥'*act}</div>", unsafe_allow_html=True)
+    st.caption("绿色：高产日 | 橙色：有创作 | 灰色：无活动")
+    
+    # 任务中心
+    st.markdown("#### 🎯 今日任务")
+    tasks = [
+        {"name": "上传一个视频", "reward": "+10积分", "done": False},
+        {"name": "使用一次AI故事成片", "reward": "+20积分", "done": False},
+        {"name": "公益捐赠", "reward": "+5积分", "done": welfare > 0},
+    ]
+    for task in tasks:
+        col1, col2, col3 = st.columns([3, 1, 1])
+        with col1:
+            st.markdown(f"**{task['name']}**")
+        with col2:
+            st.markdown(f"奖励: {task['reward']}")
+        with col3:
+            if task["done"]:
+                st.success("已完成")
+            else:
+                if st.button("去完成", key=f"task_{task['name']}"):
+                    st.info("功能开发中，敬请期待！")
+    st.markdown("---")
+    
+    tab1, tab2, tab3, tab4 = st.tabs(["📦 我的作品", "❤️ 我的收藏", "🌍 公益", "⚙️ 设置"])
+    with tab1:
+        st.markdown("#### 🖼️ 我的版图")
+        render_my_posters()
+        st.markdown("#### 🖼️ 我的壁纸")
+        render_my_wallpapers()
+    with tab2:
+        st.markdown("#### 💎 我的收藏")
+        render_my_collections()
+    with tab3:
+        render_welfare()
+        st.markdown("---")
+        render_jackpot()
+    with tab4:
+        if st.button("消息中心"):
+            render_messages()
+        st.markdown("---")
+        render_language()
+        st.markdown("---")
+        if st.button("退出登录"):
+            st.session_state.clear()
+            st.rerun()# ========== 界面辅助函数 ==========
+def render_auth():
+    with st.sidebar:
+        st.markdown("### 👤 用户中心")
+        if not st.session_state.get('logged_in', False):
+            tab = st.radio("", ["登录", "注册"], horizontal=True)
+            if tab == "登录":
+                username = st.text_input("用户名")
+                password = st.text_input("密码", type="password")
+                if st.button("登录"):
+                    ok, msg, points, admin = login_user(username, password)
+                    if ok:
+                        st.session_state.logged_in = True
+                        st.session_state.username = username
+                        st.session_state.points = points
+                        st.session_state.admin_level = admin
+                        st.session_state.remember_me = True
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+            else:
+                username = st.text_input("用户名")
+                password = st.text_input("密码", type="password")
+                confirm = st.text_input("确认密码", type="password")
+                if st.button("注册"):
+                    if password != confirm:
+                        st.error("两次密码不一致")
+                    else:
+                        ok, msg = register_user(username, password)
+                        if ok:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+            st.stop()
+        else:
+            points = get_points(st.session_state.username)
+            st.success(f"欢迎，{st.session_state.username}")
+            st.markdown(f'<div class="points-badge">⭐ 积分：{points}</div>', unsafe_allow_html=True)
+            if st.button("退出登录"):
+                st.session_state.clear()
+                st.rerun()
+
+def render_language():
+    with st.sidebar:
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("中文"):
+                st.session_state.language = 'zh'
+                st.rerun()
+        with col2:
+            if st.button("English"):
+                st.session_state.language = 'en'
+                st.rerun()
 
 def render_messages():
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -547,9 +1500,11 @@ def render_messages():
                 """, unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ========== 版图系统 ==========
+# ========== 版图/壁纸相关函数（已在前面使用，需完整定义） ==========
 POSTER_DIR = "poster_images"
+WALLPAPER_DIR = "wallpapers"
 os.makedirs(POSTER_DIR, exist_ok=True)
+os.makedirs(WALLPAPER_DIR, exist_ok=True)
 
 def save_poster_image(frame, poster_id):
     height, width = frame.shape[:2]
@@ -639,6 +1594,7 @@ def render_poster_mall():
                     conn2.close()
                     creator_points = int(price * 0.8)
                     add_points(creator, creator_points, f"版图{title}被购买")
+                    record_action(st.session_state.username, "buy", "poster", poster_id)
                     st.success(f"购买成功！{creator}获得{creator_points}积分")
                     st.rerun()
                 else:
@@ -676,6 +1632,14 @@ def render_my_posters():
                 st.image(image_path, width=150)
             st.markdown(f"**{title}** | 💰 {price}积分 | 🏷️ {rarity}")
             st.caption(f"❤️ {likes} | 🛒 {buys}")
+            if st.button(f"发布到社区", key=f"pub_poster_{i}"):
+                conn2 = sqlite3.connect('users.db')
+                c2 = conn2.cursor()
+                c2.execute("INSERT INTO posts (user, type, content, media_path) VALUES (?, ?, ?, ?)",
+                          (st.session_state.username, "poster", title, image_path))
+                conn2.commit()
+                conn2.close()
+                st.success("发布成功！")
 
 def render_my_collections():
     st.markdown("### 💎 我的收藏")
@@ -713,10 +1677,6 @@ def render_poster_stats():
         st.metric("总销量", sales)
     with col3:
         st.metric("总收益", f"{earnings} 积分")
-
-# ========== 壁纸系统 ==========
-WALLPAPER_DIR = "wallpapers"
-os.makedirs(WALLPAPER_DIR, exist_ok=True)
 
 def save_wallpaper_image(uploaded_file, signature_info):
     ext = uploaded_file.name.split('.')[-1]
@@ -758,43 +1718,26 @@ def render_wallpaper_stats():
     st.markdown("### 📊 壁纸统计")
     st.info("壁纸统计")
 
-# ========== 公益系统 ==========
-WELFARE_PROJECTS = [
-    {"id": 1, "name": "乡村儿童视频课", "points": 100, "icon": "🏫", "impact": "支持1个孩子上一节视频课"},
-    {"id": 2, "name": "环保视频计划", "points": 50, "icon": "🌍", "impact": "支持1个环保视频拍摄"},
-    {"id": 3, "name": "残障创作者支持", "points": 200, "icon": "❤️", "impact": "支持1位残障创作者"},
-    {"id": 4, "name": "动物保护视频", "points": 30, "icon": "🐕", "impact": "帮助1只流浪动物"},
-]
-WELFARE_BADGES = [
-    {"name": "爱心萌芽", "points": 100, "icon": "🌱"},
-    {"name": "爱心使者", "points": 500, "icon": "🌟"},
-    {"name": "爱心大使", "points": 1000, "icon": "💎"},
-    {"name": "公益之星", "points": 5000, "icon": "🏆"},
-    {"name": "公益传奇", "points": 10000, "icon": "👑"},
-]
-
-def get_welfare_points(username):
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT total_donated FROM welfare_points WHERE user = ?", (username,))
-    row = c.fetchone()
-    conn.close()
-    return row[0] if row else 0
-
-def add_welfare_points(username, points, project_id):
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO welfare_points (user, total_donated) VALUES (?, 0)", (username,))
-    c.execute("UPDATE welfare_points SET total_donated = total_donated + ? WHERE user = ?", (points, username))
-    c.execute("INSERT INTO welfare_donations (user, project_id, points) VALUES (?, ?, ?)", (username, project_id, points))
-    conn.commit()
-    conn.close()
-
 def render_welfare():
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### 🌍 公益积分")
     total_donated = get_welfare_points(st.session_state.username)
     st.markdown(f"**累计捐赠：{total_donated} 积分**")
+    # 此处需导入 WELFARE_PROJECTS 和 WELFARE_BADGES，但之前已在代码中定义，这里简写
+    # 实际应引用 config 中的常量，但为了独立，这里简单重复
+    WELFARE_PROJECTS = [
+        {"id": 1, "name": "乡村儿童视频课", "points": 100, "icon": "🏫", "impact": "支持1个孩子上一节视频课"},
+        {"id": 2, "name": "环保视频计划", "points": 50, "icon": "🌍", "impact": "支持1个环保视频拍摄"},
+        {"id": 3, "name": "残障创作者支持", "points": 200, "icon": "❤️", "impact": "支持1位残障创作者"},
+        {"id": 4, "name": "动物保护视频", "points": 30, "icon": "🐕", "impact": "帮助1只流浪动物"},
+    ]
+    WELFARE_BADGES = [
+        {"name": "爱心萌芽", "points": 100, "icon": "🌱"},
+        {"name": "爱心使者", "points": 500, "icon": "🌟"},
+        {"name": "爱心大使", "points": 1000, "icon": "💎"},
+        {"name": "公益之星", "points": 5000, "icon": "🏆"},
+        {"name": "公益传奇", "points": 10000, "icon": "👑"},
+    ]
     badges = []
     for badge in WELFARE_BADGES:
         if total_donated >= badge["points"]:
@@ -837,16 +1780,6 @@ def render_welfare():
         st.info("暂无公益记录")
     conn.close()
     st.markdown('</div>', unsafe_allow_html=True)
-
-# ========== 奖池金 ==========
-def get_current_jackpot():
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    current_month = time.strftime("%Y-%m")
-    c.execute("SELECT total_points FROM jackpot WHERE month = ?", (current_month,))
-    row = c.fetchone()
-    conn.close()
-    return row[0] if row else 0
 
 def render_jackpot():
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -896,662 +1829,6 @@ def render_jackpot():
     """)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ========== 智能推荐辅助函数 ==========
-def get_user_preferences(username):
-    """获取用户偏好标签（基于购买和当前视频）"""
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("""
-        SELECT p.title 
-        FROM poster_collections pc 
-        JOIN posters p ON pc.poster_id = p.id 
-        WHERE pc.user = ? 
-        ORDER BY pc.bought_at DESC LIMIT 5
-    """, (username,))
-    bought_titles = [row[0] for row in c.fetchall()]
-    conn.close()
-    
-    video_path = st.session_state.get('video_path', '')
-    video_name = os.path.basename(video_path) if video_path else ''
-    
-    keywords = []
-    all_text = " ".join(bought_titles) + " " + video_name
-    keyword_map = {
-        "夏天": ["夏天", "夏日", "summer"],
-        "海边": ["海边", "沙滩", "海", "beach"],
-        "旅行": ["旅行", "旅游", "trip"],
-        "美食": ["美食", "food"],
-        "宠物": ["宠物", "猫", "狗", "pet"],
-        "科技": ["科技", "tech"],
-        "夜景": ["夜景", "night"],
-        "城市": ["城市", "city"],
-    }
-    for tag, words in keyword_map.items():
-        if any(w in all_text.lower() for w in words):
-            keywords.append(tag)
-    if not keywords:
-        keywords = ["创意", "热门"]
-    return keywords
-
-# ========== 素材库（扩充） ==========
-VIDEO_MATERIALS = [
-    {"name": "夏日海滩", "tags": ["夏天", "海边"], "url": "https://www.w3schools.com/html/mov_bbb.mp4"},
-    {"name": "城市夜景", "tags": ["城市", "夜景"], "url": "https://www.w3schools.com/html/movie.mp4"},
-    {"name": "美食特写", "tags": ["美食"], "url": "https://www.w3schools.com/html/mov_bbb.mp4"},
-    {"name": "萌宠日常", "tags": ["宠物"], "url": "https://www.w3schools.com/html/mov_bbb.mp4"},
-    {"name": "旅行Vlog", "tags": ["旅行"], "url": "https://www.w3schools.com/html/mov_bbb.mp4"},
-    {"name": "科技未来", "tags": ["科技"], "url": "https://www.w3schools.com/html/movie.mp4"},
-    {"name": "春日樱花", "tags": ["春天", "浪漫"], "url": "https://www.w3schools.com/html/mov_bbb.mp4"},
-    {"name": "雪山风景", "tags": ["冬天", "自然"], "url": "https://www.w3schools.com/html/movie.mp4"},
-    {"name": "街拍时尚", "tags": ["城市", "潮流"], "url": "https://www.w3schools.com/html/mov_bbb.mp4"},
-]
-
-MUSIC_MATERIALS = [
-    {"name": "轻快吉他", "tags": ["轻快"], "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"},
-    {"name": "舒缓钢琴", "tags": ["舒缓"], "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"},
-    {"name": "动感节奏", "tags": ["动感"], "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"},
-    {"name": "治愈系", "tags": ["治愈"], "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"},
-    {"name": "电子舞曲", "tags": ["电子"], "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"},
-]
-
-TEXT_TEMPLATES = [
-    {"name": "夏日文案", "text": "夏天的风，吹过海面", "tags": ["夏天"]},
-    {"name": "旅行标语", "text": "在路上，遇见自己", "tags": ["旅行"]},
-    {"name": "美食语录", "text": "唯有美食与爱不可辜负", "tags": ["美食"]},
-    {"name": "春日寄语", "text": "春风十里，不如你", "tags": ["春天"]},
-    {"name": "励志金句", "text": "努力是奇迹的另一个名字", "tags": ["励志"]},
-]
-
-def get_materials_for_story(story_text):
-    """根据故事文本返回匹配的素材列表（名称和URL）"""
-    story_lower = story_text.lower()
-    selected = set()
-    for material in VIDEO_MATERIALS:
-        for tag in material["tags"]:
-            if tag in story_lower:
-                selected.add(material["name"])
-    if not selected:
-        selected = {VIDEO_MATERIALS[0]["name"], VIDEO_MATERIALS[1]["name"]}
-    result = [m for m in VIDEO_MATERIALS if m["name"] in selected]
-    return result
-
-# ========== 视频合成辅助函数 ==========
-CACHE_DIR = "cached_videos"
-os.makedirs(CACHE_DIR, exist_ok=True)
-
-def download_video(url, save_path):
-    """下载远程视频到本地"""
-    r = requests.get(url, stream=True)
-    with open(save_path, 'wb') as f:
-        for chunk in r.iter_content(chunk_size=8192):
-            f.write(chunk)
-    return save_path
-
-def get_cached_video(url):
-    """获取本地缓存的视频路径，如果不存在则下载"""
-    filename = hashlib.md5(url.encode()).hexdigest() + ".mp4"
-    cache_path = os.path.join(CACHE_DIR, filename)
-    if not os.path.exists(cache_path):
-        download_video(url, cache_path)
-    return cache_path
-
-def synthesize_video_from_story(materials, output_path, progress_callback=None):
-    """将匹配到的素材列表合成视频"""
-    clips = []
-    for i, material in enumerate(materials):
-        local_path = get_cached_video(material['url'])
-        clip = VideoFileClip(local_path)
-        # 可选：截取片段（比如只取前5秒）
-        # clip = clip.subclip(0, min(5, clip.duration))
-        clips.append(clip)
-        if progress_callback:
-            progress_callback((i+1)/len(materials))
-    final_clip = concatenate_videoclips(clips, method="compose")
-    final_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
-    for clip in clips:
-        clip.close()
-
-# ========== 图文成片辅助函数 ==========
-def extract_keywords(text):
-    """提取文本关键词（简单版）"""
-    words = jieba.cut(text)
-    # 这里简化为只取前3个长度>1的词
-    keywords = [w for w in words if len(w) > 1][:3]
-    if not keywords:
-        keywords = ["创意"]
-    return keywords
-
-def text_to_audio(text, output_path):
-    """文本转语音，保存为 mp3"""
-    tts = gTTS(text=text, lang='zh-cn', slow=False)
-    tts.save(output_path)
-
-def generate_video_from_text(title, content):
-    """根据标题和正文生成视频，返回输出文件路径"""
-    # 1. 提取关键词
-    full_text = title + " " + content
-    keywords = extract_keywords(full_text)
-    
-    # 2. 匹配视频素材
-    matched_videos = []
-    for m in VIDEO_MATERIALS:
-        for tag in m["tags"]:
-            if tag in keywords:
-                matched_videos.append(m)
-    if not matched_videos:
-        matched_videos = VIDEO_MATERIALS[:2]  # 默认前两个
-    
-    # 3. 匹配音乐（简单示例，根据内容含“快乐”等词选择）
-    if any(word in full_text for word in ["快乐", "幸福", "喜悦"]):
-音乐=音乐_材料[0] #轻快吉他[0]  # 轻快吉他
- 否则如果 任何的(单词在全文_文本为单词在["悲伤", "难过"]):任何的(单词在全文_文本为单词在 ["悲伤", "难过"]):
-音乐=音乐_材料[1] #舒缓钢琴[1]  # 舒缓钢琴
-    其他:
-音乐=音乐_材料[2] #动感节奏[2]  # 动感节奏
-    
-    # 4. 生成配音
-音频文件=临时文件。命名临时文件(后缀=. mp3，delete=False).名字命名临时文件(后缀=".mp3 "，delete=False)。名字
-文本到音频（全文,音频文件)文本到音频(全文，音频文件)
-    
-    # 5. 合成视频
-剪辑= [][]
-为m在匹配的_视频：
-本地路径=获取缓存视频(m['url'])获取缓存视频(m[' url '])
-剪辑=视频文件剪辑(本地路径)。子剪辑(0，min(5，VideoFileClip(local_path))。持续时间))
-夹子。附加（剪辑)附加(剪辑)
-final_clip =串联_视频剪辑（剪辑,方法= "合成")串联_视频剪辑(剪辑，方法= "合成")
-    # 添加配音
-audio_clip =音频文件剪辑（音频文件)音频文件剪辑(音频文件)
-最终剪辑=最终剪辑。设置_音频（音频_剪辑)设置_音频(音频_剪辑)
-    # 输出
-输出路径=临时文件。命名临时文件（后缀=".mp4 "，delete=False).名字命名临时文件(后缀=".mp4 "，delete=False)。名字
-最终_剪辑。写入_视频文件（输出路径,编解码器='libx264 '，音频编解码器='aac ')写入_视频文件(输出路径，编解码器='libx264 '，音频编解码器='aac ')
-    
-    # 清理临时文件
-为夹子在剪辑:
-夹子。关闭()关闭()
-音频_剪辑。关闭()关闭()
-返回输出路径# ========== 小智AI助手（重构为AI创作页） ==========
-def render_ai_creation_page():
-    st.markdown("### 🤖 AI创作工具箱")
-    
-    # 今日推荐工具
-    st.markdown("#### 🌟 今日推荐")
-    with st.container():
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            st.markdown("<div style='font-size: 48px;'>🎬</div>", unsafe_allow_html=True)
-        with col2:
-            st.markdown("**AI故事成片**\n只需输入故事梗概，AI自动生成分镜脚本并匹配素材，一键合成视频。")
-            if st.button("立即体验", key="today_tool"):
-                st.session_state.current_ai_tool = "story_to_video"
-                st.rerun()
-    st.markdown("---")
-    
-    # 工具列表
-    tools = [
-        {"icon": "🎬", "name": "AI故事成片", "desc": "输入故事，生成分镜脚本和视频", "func": "story_to_video"},
-        {"icon": "📝", "name": "图文成片", "desc": "输入文字，自动生成视频", "func": "text_to_video"},
-        {"icon": "✂️", "name": "AI剪视频", "desc": "智能分析视频，推荐剪辑点", "func": "ai_cut"},
-        {"icon": "🎬", "name": "AI视频生成", "desc": "文本描述生成视频", "func": "text_to_video_advanced"},
-        {"icon": "🎤", "name": "智能提词拍摄", "desc": "提词器+AI台词生成", "func": "teleprompter"},
-        {"icon": "🎭", "name": "表情包工厂", "desc": "从视频制作GIF表情", "func": "meme_factory"},
-        {"icon": "🎵", "name": "变声器", "desc": "改变音频音色", "func": "voice_changer"},
-        {"icon": "🏆", "name": "每日挑战", "desc": "完成创作任务赢积分", "func": "daily_challenge"},
-    ]
-    
-    # 2列网格
-    cols = st.columns(2)
-    for i, tool in enumerate(tools):
-        with cols[i % 2]:
-            with st.container():
-                st.markdown(f"""
-                <div style="background: white; border-radius: 16px; padding: 15px; margin-bottom: 15px;">
-                    <div style="font-size: 32px;">{tool['icon']}</div>
-                    <div><strong>{tool['name']}</strong></div>
-                    <div style="color: gray; font-size: 12px;">{tool['desc']}</div>
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button(f"使用 {tool['name']}", key=tool['func'], use_container_width=True):
-                    st.session_state.current_ai_tool = tool['func']
-                    st.rerun()
-    
-    # 显示选中的工具界面
-    if 'current_ai_tool' in st.session_state:
-        tool = st.session_state.current_ai_tool
-        st.markdown("---")
-        tool_names = {t['func']: t['name'] for t in tools}
-        st.markdown(f"### {tool_names[tool]}")
-        
-if tool == "story_to_video ":
-story_prompt = st.text_area("输入故事梗概"，高度=100，占位符= "例如：一个宇航员在火星上发现了一朵花")
-col1，col2 = st.columns(2)
-使用col1:
-如果圣巴顿(“生成分镜脚本"，use_container_width=True):
-如果故事_提示:
-与圣斯宾纳(“正在生成分镜..."):
-script = f " " "
-镜头1:{story_prompt[:20]}...引入场景(5秒)
-                            镜头2：细节特写，展示关键元素（8秒）
-                            镜头3：情感爆发或转折（5秒）
-                            镜头4：结局，留下想象空间（4秒）
-                            """
-圣成功(“分镜脚本已生成")
-st.text(脚本)
-否则:
-st.warning("请输入故事梗概")
-使用col2:
-如果圣巴顿(“一键成片"，use_container_width=True):
-如果故事_提示:
-与圣斯宾纳(“正在从素材库选取片段..."):
-                            materials = get_materials_for_story(story_prompt)
-                            if materials:
-                                st.info(f"✅ 已匹配到 {len(materials)} 个相关素材：{', '.join([m['name'] for m in materials])}")
-                                progress_bar = st.progress(0)
-                                def update_progress(p):
-                                    progress_bar.progress(int(p * 100))
-                                output_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-                                try:
-                                    synthesize_video_from_story(materials, output_file, progress_callback=update_progress)
-                                    st.success("视频合成完成！点击下载")
-                                    with open(output_file, "rb") as f:
-                                        st.download_button("下载视频", f, file_name="story_video.mp4", mime="video/mp4")
-                                except Exception as e:
-                                    st.error(f"合成失败：{e}")
-                                progress_bar.empty()
-                            else:
-                                st.warning("未能匹配到素材，请尝试更具体的故事描述")
-                    else:
-                        st.warning("请输入故事梗概")
-        
-        elif tool == "text_to_video":
-            st.markdown("#### 图文成片")
-            title = st.text_input("标题", placeholder="请输入视频标题")
-            content = st.text_area("正文", height=150, placeholder="输入你想表达的内容...")
-            if st.button("生成视频", use_container_width=True):
-                if title and content:
-                    with st.spinner("正在生成视频，请稍候..."):
-                        try:
-                            output_file = generate_video_from_text(title, content)
-                            st.success("视频生成完成！点击下载")
-                            with open(output_file, "rb") as f:
-                                st.download_button("下载视频", f, file_name="text2video.mp4", mime="video/mp4")
-                        except Exception as e:
-                            st.error(f"生成失败：{e}")
-                else:
-                    st.warning("请填写标题和正文")
-        
-        elif tool == "ai_cut":
-            st.info("AI剪视频功能开发中，敬请期待！")
-        elif tool == "text_to_video_advanced":
-            st.info("AI视频生成功能开发中，敬请期待！")
-        elif tool == "teleprompter":
-            render_teleprompter()
-        elif tool == "meme_factory":
-            render_meme_factory()
-        elif tool == "voice_changer":
-            st.info("变声器功能开发中，敬请期待！")
-        elif tool == "daily_challenge":
-            st.info("每日挑战功能开发中，敬请期待！")
-        
-        if st.button("← 返回工具箱", use_container_width=True):
-            del st.session_state.current_ai_tool
-            st.rerun()
-
-# ========== 剪辑页面 ==========
-def render_clip_page():
-    # 模板中心
-    st.markdown("#### 🎨 热门模板")
-    templates = [
-        {"name": "春日回忆", "image": "https://picsum.photos/300/200?random=1", "desc": "春天主题，温暖治愈"},
-        {"name": "旅行Vlog", "image": "https://picsum.photos/300/200?random=2", "desc": "旅行风景，自由轻松"},
-        {"name": "美食诱惑", "image": "https://picsum.photos/300/200?random=3", "desc": "美食特写，诱人口感"},
-    ]
-    cols = st.columns(3)
-    for i, tpl in enumerate(templates):
-        with cols[i]:
-            st.image(tpl["image"], use_column_width=True)
-            st.caption(f"**{tpl['name']}**\n{tpl['desc']}")
-            if st.button(f"使用模板", key=f"tpl_{i}"):
-                st.info(f"模板 {tpl['name']} 已添加到待编辑列表（功能开发中）")
-    st.markdown("---")
-    
-    st.markdown("### 🎬 开始创作")
-    uploaded = st.file_uploader("", type=["mp4", "mov", "avi"], label_visibility="collapsed", key="clip_upload")
-    if uploaded:
-        video_path = save_uploaded_file(uploaded)
-        st.session_state.video_path = video_path
-        st.video(video_path)
-        st.success("✅ 上传成功！")
-        
-        st.markdown("#### ✂️ 剪辑工具")
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            if st.button("剪切视频", use_container_width=True):
-                if st.session_state.get('video_path'):
-                    dur = get_video_info(st.session_state.video_path)["duration"]
-                    with st.expander("设置剪切时间", expanded=True):
-                        start = st.number_input("开始(秒)", 0.0, dur, 0.0)
-                        end = st.number_input("结束(秒)", 0.0, dur, min(5.0, dur))
-                        if st.button("确认剪切"):
-                            out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-                            cut_video(st.session_state.video_path, start, end, out)
-                            with open(out, "rb") as f:
-                                st.download_button("下载", f, file_name="cut.mp4")
-                else:
-                    st.warning("请先上传视频")
-        with col2:
-            if st.button("视频变速", use_container_width=True):
-                if st.session_state.get('video_path'):
-                    with st.expander("选择速度", expanded=True):
-                        def apply_speed(s):
-                            out = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-                            speed_video(st.session_state.video_path, s, out)
-                            with open(out, "rb") as f:
-                                st.download_button("下载", f, file_name=f"speed_{s}x.mp4")
-                        cols_s = st.columns(4)
-                        with cols_s[0]:
-                            if st.button("0.5x"): apply_speed(0.5)
-                        with cols_s[1]:
-                            if st.button("1.0x"): apply_speed(1.0)
-                        with cols_s[2]:
-                            if st.button("1.5x"): apply_speed(1.5)
-                        with cols_s[3]:
-                            if st.button("2.0x"): apply_speed(2.0)
-                        speed = st.number_input("自定义倍数", 0.5, 2.0, 1.0, step=0.1)
-                        if st.button("应用自定义"):
-                            apply_speed(speed)
-                else:
-                    st.warning("请先上传视频")
-        with col3:
-            if st.button("导出GIF", use_container_width=True):
-                if st.session_state.get('video_path'):
-                    with st.expander("设置GIF参数", expanded=True):
-                        start = st.number_input("开始时间(秒)", 0.0, 10.0, 0.0)
-                        duration = st.number_input("时长(秒)", 1.0, 10.0, 3.0)
-                        if st.button("确认导出"):
-                            out = tempfile.NamedTemporaryFile(suffix=".gif", delete=False).name
-                            video_to_gif(st.session_state.video_path, out, start, duration)
-                            with open(out, "rb") as f:
-                                st.download_button("下载", f, file_name="output.gif")
-                else:
-                    st.info("请先上传视频")
-        with col4:
-            if st.button("美颜滤镜", use_container_width=True):
-                st.info("美颜滤镜开发中，敬请期待")
-    else:
-        # 未上传时显示大按钮
-        st.markdown("""
-        <div style="text-align:center; padding: 50px; border: 2px dashed #ccc; border-radius: 20px;">
-            <div style="font-size: 48px;">📤</div>
-            <p>点击或拖拽视频开始创作</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("#### 🔥 热门工具")
-    hot_tools = [
-        ("🎬 AI故事成片", "ai_story"),
-        ("📝 图文成片", "text2video"),
-        ("✂️ AI剪视频", "ai_cut"),
-        ("🎤 智能提词", "teleprompter"),
-    ]
-    cols = st.columns(2)
-    for i, (name, key) in enumerate(hot_tools):
-        with cols[i % 2]:
-            if st.button(name, use_container_width=True):
-                st.session_state.nav_index = 1
-                st.session_state.current_ai_tool = key
-                st.rerun()
-
-# ========== 素材页面 ==========
-def render_material_page():
-    st.markdown("### 📦 素材库")
-    
-    # 智能推荐
-    st.markdown("#### 🧠 为你推荐")
-    preferences = get_user_preferences(st.session_state.username)
-    recommended = []
-    for m in VIDEO_MATERIALS:
-        score = sum(1 for tag in m["tags"] if tag in preferences)
-        if score > 0:
-            recommended.append((score, m))
-    recommended.sort(reverse=True, key=lambda x: x[0])
-    recommended = [m for score, m in recommended][:3]
-    if not recommended:
-        recommended = VIDEO_MATERIALS[:2]
-    cols = st.columns(len(recommended))
-    for i, m in enumerate(recommended):
-        with cols[i]:
-            st.video(m["url"], format="video/mp4", start_time=0)
-            st.caption(f"**{m['name']}**  /  {' '.join(['#'+t for t in m['tags']])}")
-            if st.button(f"应用", key=f"rec_{i}"):
-                st.info(f"已将 {m['name']} 添加到待编辑列表")
-    
-    st.markdown("---")
-    
-    # 分类标签
-    tab1, tab2, tab3, tab4 = st.tabs(["🎬 视频素材", "🎵 背景音乐", "📝 文字模板", "🎨 数字资产"])
-    
-    with tab1:
-        cols = st.columns(3)
-        for i, m in enumerate(VIDEO_MATERIALS):
-            with cols[i % 3]:
-                st.video(m["url"], format="video/mp4", start_time=0)
-                st.caption(f"**{m['name']}**  /  {' '.join(['#'+t for t in m['tags']])}")
-                if st.button(f"应用", key=f"video_{i}"):
-                    st.info(f"已将 {m['name']} 添加到待编辑列表")
-    
-    with tab2:
-        cols = st.columns(3)
-        for i, m in enumerate(MUSIC_MATERIALS):
-            with cols[i % 3]:
-                st.audio(m["url"], format="audio/mp3")
-                st.caption(f"**{m['name']}**")
-                if st.button(f"应用", key=f"music_{i}"):
-                    st.info(f"已将 {m['name']} 添加到配乐列表")
-    
-    with tab3:
-        cols = st.columns(3)
-        for i, tpl in enumerate(TEXT_TEMPLATES):
-            with cols[i % 3]:
-                st.markdown(f"<div style='background:#f5f5f5; padding:10px; border-radius:10px;'>{tpl['text']}</div>", unsafe_allow_html=True)
-                st.caption(f"**{tpl['name']}**")
-                if st.button(f"复制", key=f"text_{i}"):
-                    st.info(f"已复制到剪贴板")
-    
-    with tab4:
-        st.markdown("#### 版图系统")
-        if st.button("进入版图系统", use_container_width=True):
-            with st.expander("版图系统", expanded=True):
-                poster_tabs = st.tabs(["✨ 生成版图", "🛒 版图商城", "🖼️ 我的版图", "💎 我的收藏", "📊 版图统计"])
-                with poster_tabs[0]:
-                    render_poster_generator()
-                with poster_tabs[1]:
-                    render_poster_mall()
-                with poster_tabs[2]:
-                    render_my_posters()
-                with poster_tabs[3]:
-                    render_my_collections()
-                with poster_tabs[4]:
-                    render_poster_stats()
-        st.markdown("#### 壁纸系统")
-        if st.button("进入壁纸系统", use_container_width=True):
-            with st.expander("壁纸系统", expanded=True):
-                wallpaper_tabs = st.tabs(["🎨 创作壁纸", "🛒 壁纸商城", "🖼️ 我的壁纸", "📊 壁纸统计"])
-                with wallpaper_tabs[0]:
-                    render_wallpaper_generator()
-                with wallpaper_tabs[1]:
-                    render_wallpaper_mall()
-                with wallpaper_tabs[2]:
-                    render_my_wallpapers()
-                with wallpaper_tabs[3]:
-                    render_wallpaper_stats()
-
-# ========== 社区页面 ==========
-def render_community_page():
-    st.markdown("### 🌐 灵感社区")
-    
-    # 热门话题
-    st.markdown("#### 🔥 热门话题")
-    topics = ["#夏日创作", "#AI故事", "#旅行Vlog", "#美食日记"]
-    cols = st.columns(len(topics))
-    for i, topic in enumerate(topics):
-        with cols[i]:
-            if st.button(topic, use_container_width=True):
-                st.info(f"话题 {topic} 功能开发中，敬请期待！")
-    st.markdown("---")
-    
-    # 展示作品
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT id, title, price_points, image_path FROM posters WHERE status='on_sale' ORDER BY created_at DESC LIMIT 6")
-    rec = c.fetchall()
-    conn.close()
-    if rec:
-        cols = st.columns(2)
-        for i, (pid, title, price, img) in enumerate(rec):
-            with cols[i%2]:
-                if img and os.path.exists(img):
-                    st.image(img, use_column_width=True)
-                st.markdown(f"**{title}**")
-                st.caption(f"💰 {price}积分")
-                if st.button(f"查看详情", key=f"com_{pid}"):
-                    st.info("详情页开发中")
-    else:
-        st.markdown("### 🎨 灵感示例")
-        st.image("https://picsum.photos/300/200?random=1", caption="示例作品1")
-        st.image("https://picsum.photos/300/200?random=2", caption="示例作品2")
-        st.caption("快去创作你的第一个作品吧！")
-
-# ========== 我的页面 ==========
-def render_my_page():
-    st.markdown("### 👤 我的")
-    
-    points = get_points(st.session_state.username)
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM posters WHERE creator = ?", (st.session_state.username,))
-    poster_count = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM wallpapers WHERE creator = ?", (st.session_state.username,))
-    wallpaper_count = c.fetchone()[0]
-    conn.close()
-    welfare = get_welfare_points(st.session_state.username)
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("积分", points)
-    with col2:
-        st.metric("作品", poster_count + wallpaper_count)
-    with col3:
-        st.metric("公益", welfare)
-    
-    # 创作日历（模拟）
-    st.markdown("#### 📅 创作日历")
-    days = ["一", "二", "三", "四", "五", "六", "日"]
-    import random
-    active = [random.choice([0,1,1,1,2,2]) for _ in range(7)]
-    cols = st.columns(7)
-    for i, (day, act) in enumerate(zip(days, active)):
-        with cols[i]:
-            color = "#4caf50" if act >= 2 else "#ff9800" if act == 1 else "#ddd"
-            st.markdown(f"<div style='text-align:center; background:{color}; border-radius:8px; padding:5px;'>{day}<br>{'🔥'*act}</div>", unsafe_allow_html=True)
-    st.caption("绿色：高产日 | 橙色：有创作 | 灰色：无活动")
-    
-    # 任务中心
-    st.markdown("#### 🎯 今日任务")
-    tasks = [
-        {"name": "上传一个视频", "reward": "+10积分", "done": False},
-        {"name": "使用一次AI故事成片", "reward": "+20积分", "done": False},
-        {"name": "公益捐赠", "reward": "+5积分", "done": welfare > 0},
-    ]
-    for task in tasks:
-        col1, col2, col3 = st.columns([3, 1, 1])
-        with col1:
-            st.markdown(f"**{task['name']}**")
-        with col2:
-            st.markdown(f"奖励: {task['reward']}")
-        with col3:
-            if task["done"]:
-                st.success("已完成")
-否则:
-如果圣巴顿(“去完成"，key=f"task_{task['name']} ":
-st.info("功能开发中,敬请期待!")
-圣马克道(“-”)
-    
-# 原有制表符
-tab1，tab2，tab3，tab4 = st.tabs(["📦 我的作品", "❤️ 我的收藏", "🌍 公益", "⚙️ 设置"])
-使用表1:
-圣马克道(" # # # # #🖼️我的版图")
-render _ my _ posters()
-圣马克道(" # # # # #🖼️我的壁纸")
-渲染我的壁纸()
-使用表2:
-st.markdown("####💎 我的收藏")
-render_my_collections()
-使用表3:
-render_welfare()
-圣马克道(“-”)
-render_jackpot()
-使用表4:
-如果圣巴顿(“消息中心"):
-渲染消息()
-圣马克道(“-”)
-渲染语言()
-圣马克道(“-”)
-如果圣巴顿(“退出登录"):
-st.session_state.clear()
-圣雷恩河()# ========== 界面函数 ==========
-def render_auth():
-    with st.sidebar:
-        st.markdown("### 👤 用户中心")
-        if not st.session_state.get('logged_in', False):
-            tab = st.radio("", ["登录", "注册"], horizontal=True)
-            if tab == "登录":
-                username = st.text_input("用户名")
-                password = st.text_input("密码", type="password")
-                if st.button("登录"):
-                    ok, msg = login_user(username, password)
-                    if ok:
-                        st.success(msg)
-                        st.rerun()
-                    else:
-                        st.error(msg)
-            else:
-                username = st.text_input("用户名")
-                password = st.text_input("密码", type="password")
-                confirm = st.text_input("确认密码", type="password")
-                if st.button("注册"):
-                    if password != confirm:
-                        st.error("两次密码不一致")
-                    else:
-                        ok, msg = register_user(username, password)
-                        if ok:
-                            st.success(msg)
-                            st.rerun()
-                        else:
-                            st.error(msg)
-            st.stop()
-        else:
-            points = get_points(st.session_state.username)
-            st.success(f"欢迎，{st.session_state.username}")
-            st.markdown(f'<div class="points-badge">⭐ 积分：{points}</div>', unsafe_allow_html=True)
-            if st.button("退出登录"):
-                st.session_state.clear()
-                st.rerun()
-
-def render_language():
-    with st.sidebar:
-        st.markdown("---")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("中文"):
-                st.session_state.language = 'zh'
-                st.rerun()
-        with col2:
-            if st.button("English"):
-                st.session_state.language = 'en'
-                st.rerun()
-
 def render_teleprompter():
     st.markdown("### 🎤 提词拍摄")
     st.markdown("在摄像头画面上显示台词，滚动提词，告别忘词！")
@@ -1563,7 +1840,7 @@ def render_teleprompter():
         if script:
             st.markdown(f"""
             <div style="background: rgba(0,0,0,0.7); color: white; padding: 10px; border-radius: 10px; font-family: monospace; font-size: 20px; white-space: pre-wrap;">
-{script}
+                {script}
             </div>
             """, unsafe_allow_html=True)
             st.caption(f"滚动速度：{scroll_speed} 字/秒")
@@ -1604,7 +1881,6 @@ def render_meme_factory():
                     out = tempfile.NamedTemporaryFile(suffix=".gif", delete=False).name
                     video_to_gif(video_path, out, start, duration)
                     try:
-                        from PIL import Image, ImageDraw, ImageFont
                         gif = Image.open(out)
                         draw = ImageDraw.Draw(gif)
                         try:
@@ -1613,65 +1889,108 @@ def render_meme_factory():
                             font = ImageFont.load_default()
                         draw.text((50, 50), meme_text, fill="white", font=font)
                         gif.save(out)
-st.success("GIF生成成功!")
-开(出，“rb”)为f:
-st.download_button("下载GIF "，f，file_name="meme.gif ")
-例外情况为e:
-标准误差(f "添加文字失败:{e} ")
-否则:
-st.warning("请输入文字")
+                        st.success("GIF生成成功！")
+                        with open(out, "rb") as f:
+                            st.download_button("下载GIF", f, file_name="meme.gif")
+                    except Exception as e:
+                        st.error(f"添加文字失败：{e}")
+            else:
+                st.warning("请输入文字")
 
 # ========== 主程序 ==========
 def main():
-如果“语言”不在圣会话状态中:
-st.session_state.language = 'zh '
-如果圣会话_状态get(' remember _ me '，False):
-如果"用户名"在第一会话状态中：
-圣会话_状态. logged _ in = True
+    if 'language' not in st.session_state:
+        st.session_state.language = 'zh'
+    if st.session_state.get('remember_me', False):
+        if 'username' in st.session_state:
+            st.session_state.logged_in = True
     
-init_db()
-初始化_海报_表格()
-初始化_壁纸_表格()
-init_welfare_tables()
-init_jackpot_tables()
-init_jackpot_tables()
-st.session_state.language = 'zh '
-render_auth()
+    # 初始化所有表
+    init_db()
+    init_poster_tables()
+    init_wallpaper_tables()
+    init_welfare_tables()
+    init_jackpot_tables()
+    init_community_tables()
+    init_material_tables()
+    init_user_actions_table()
+    load_sample_materials()
     
-如果不是圣会话_状态get(' logged _ in '，False):
-圣马克道(""
-< div class="main-header " >
-< div style = " font-size:60px；">🤖</div >
-< h1 >小智-智能视频助手</h1 >
-< p >你的人工智能视频创作伙伴</p >
-</div >
-"""，unsafe_allow_html=True)
-st.info("👈 请先在左侧登录或注册")
-返回
+    render_language()
+    render_auth()
+    
+    if not st.session_state.get('logged_in', False):
+        st.markdown("""
+        <div class="main-header">
+            <div style="font-size: 60px;">🤖</div>
+            <h1>小智 - 智能视频助手</h1>
+            <p>你的AI视频创作伙伴</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.info("👈 请先在左侧登录或注册")
+        return
+    
+    # 获取统计数据用于显示
+    points = get_points(st.session_state.username)
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM posters WHERE creator = ?", (st.session_state.username,))
+    poster_count = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM wallpapers WHERE creator = ?", (st.session_state.username,))
+    wallpaper_count = c.fetchone()[0]
+    conn.close()
+    
+    st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
+    st.markdown('<div class="stat-row">', unsafe_allow_html=True)
+    st.markdown(f'<div class="stat-item"><div class="stat-number">{points}</div><div class="stat-label">积分</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="stat-item"><div class="stat-number">{poster_count + wallpaper_count}</div><div class="stat-label">作品数</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="stat-item"><div class="stat-number">{poster_count}</div><div class="stat-label">版图</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="stat-item"><div class="stat-number">{wallpaper_count}</div><div class="stat-label">壁纸</div></div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    if 'first_visit' not in st.session_state:
+        st.session_state.first_visit = True
+        st.info("🎉 欢迎来到小智！点击底部导航栏体验不同功能，试试「提词拍摄」和「表情包工厂」。说“剪掉前5秒”也能剪视频哦！")
+    
+    # 热门推荐（示例）
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT title, price_points FROM posters ORDER BY created_at DESC LIMIT 3")
+    hot_posters = c.fetchall()
+    c.execute("SELECT title, price_points FROM wallpapers ORDER BY created_at DESC LIMIT 3")
+    hot_wallpapers = c.fetchall()
+    conn.close()
+    if hot_posters or hot_wallpapers:
+        st.markdown('<div class="stat-label" style="margin-bottom: 10px;">🔥 热门推荐</div>', unsafe_allow_html=True)
+        st.markdown('<div class="hot-grid">', unsafe_allow_html=True)
+        for p in hot_posters[:2]:
+            st.markdown(f'<div class="hot-item">🖼️ {p[0]}<br>{p[1]}积分</div>', unsafe_allow_html=True)
+        for w in hot_wallpapers[:2]:
+            st.markdown(f'<div class="hot-item">🎨 {w[0]}<br>{w[1]}积分</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
     
     # 底部导航栏
-st.rerun()
-如果"导航索引"不在第一会话状态中：
+    if 'nav_index' not in st.session_state:
+        st.session_state.nav_index = 0
     
-nav_items = ["🎬 剪辑", "🤖人工智能创作", "📦 素材", "🌐 社区", "👤 我的"]
-cols = st.columns(len(nav_items))
-对于我，枚举中的名称(导航项目):
-带列[i]:
-if st.button(name，use_container_width=True):
-st.session_state.nav_index = i
-st.rerun()
+    nav_items = ["🎬 剪辑", "🤖 AI创作", "📦 素材", "🌐 社区", "👤 我的"]
+    cols = st.columns(len(nav_items))
+    for i, name in enumerate(nav_items):
+        with cols[i]:
+            if st.button(name, use_container_width=True):
+                st.session_state.nav_index = i
+                st.rerun()
     
-    # 根据导航显示不同页面
-如果st.session_state.nav_index == 0:
-render_clip_page()
- 否则如果第一会话状态。导航索引= = 1:
-render_ai_creation_page()
- 否则如果第一会话状态。导航索引= = 2:
-render_material_page()
-否则如果第一会话状态. nav _ index = = 3:
-render_community_page()
-否则:
-render_my_page()
+    if st.session_state.nav_index == 0:
+        render_clip_page()
+    elif st.session_state.nav_index == 1:
+        render_ai_creation_page()
+    elif st.session_state.nav_index == 2:
+        render_material_page()
+    elif st.session_state.nav_index == 3:
+        render_community_page()
+    else:
+        render_my_page()
 
-if __name__ == "__main__ ":
-主要的()
+if __name__ == "__main__":
+    main()
