@@ -1994,3 +1994,28 @@ def main():
 
 if __name__ == "__main__":
     main()
+# 底部导航栏
+    if 'nav_index' not in st.session_state:
+        st.session_state.nav_index = 0
+    
+    nav_items = ["🎬 剪辑", "🤖 AI创作", "📦 素材", "🌐 社区", "👤 我的"]
+    cols = st.columns(len(nav_items))
+    for i, name in enumerate(nav_items):
+        with cols[i]:
+            if st.button(name, use_container_width=True):
+                st.session_state.nav_index = i
+                st.rerun()
+    
+    if st.session_state.nav_index == 0:
+        render_clip_page()
+    elif st.session_state.nav_index == 1:
+        render_ai_creation_page()
+    elif st.session_state.nav_index == 2:
+        render_material_page()
+    elif st.session_state.nav_index == 3:
+        render_community_page()
+    else:
+        render_my_page()
+
+if __name__ == "__main__":
+    main()
