@@ -2,6 +2,6 @@ streamlit
 moviepy
 opencv-python-headless
 numpy
-pandas
-plotly
 pillow
+gTTS
+jieba
